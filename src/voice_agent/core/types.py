@@ -53,7 +53,7 @@ class VADConfig:
     """VAD configuration."""
 
     threshold: float = 0.5
-    min_speech_ms: int = 250
+    min_speech_ms: int = 1000
     min_silence_ms: int = 1000
     speech_pad_ms: int = 30
 
@@ -115,6 +115,12 @@ class TranscriptionResult:
     text: str
     language: str
     latency_ms: float
+
+    # Streaming fields
+    is_final: bool = True           # True nếu đây là kết quả cuối cùng
+    stability: float = 1.0          # 0.0-1.0, độ ổn định của transcript
+    confidence: float = 0.0         # 0.0-1.0, độ tin cậy
+    result_end_offset_ms: float = 0.0  # Vị trí kết thúc trong audio stream
 
 
 @dataclass(slots=True)

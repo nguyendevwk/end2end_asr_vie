@@ -17,7 +17,6 @@ from voice_agent.utils import (
     Timer,
     get_audio_duration_ms,
     get_logger,
-    get_preprocessor,
     get_postprocessor,
 )
 
@@ -86,9 +85,9 @@ class Orchestrator:
         # Interrupt flag
         self._interrupted = False
 
-        # Audio processors
-        self._preprocessor = get_preprocessor()
+        # Audio postprocessor for TTS output
         self._postprocessor = get_postprocessor()
+        self._min_asr_audio_ms = max(1000, vad._config.min_speech_ms)
 
         # Log service status
         logger.info(
@@ -126,12 +125,9 @@ class Orchestrator:
             PipelineError: If processing fails
         """
         try:
-            # Preprocess audio
-            processed_chunk = self._preprocessor.process(audio_chunk)
-
-            # Run VAD
+            # Run VAD on raw audio
             with Timer() as vad_timer:
-                vad_result = await self._vad.detect(processed_chunk)
+                vad_result = await self._vad.detect(audio_chunk)
             self._monitor.record_vad(vad_timer.elapsed_ms, vad_result.is_speech)
 
             # Handle VAD events
@@ -144,17 +140,30 @@ class Orchestrator:
                 logger.info("speech_started", session_id=self.session_id)
 
             if vad_result.is_speech:
-                # Accumulate preprocessed audio
-                self._audio_buffer.add(processed_chunk)
+                # Accumulate raw audio (will be preprocessed by ASR later)
+                self._audio_buffer.add(audio_chunk)
 
             if vad_result.event == "end" and self._audio_buffer:
-                # Speech ended - process utterance
-                self._state = PipelineState.PROCESSING
-                yield "PROCESSING"
-
+                # Speech ended - validate utterance duration first
                 # Get buffered audio
                 audio_data = self._audio_buffer.get_all()
                 audio_duration_ms = get_audio_duration_ms(audio_data)
+
+                if audio_duration_ms < self._min_asr_audio_ms:
+                    logger.info(
+                        "speech_too_short_skip_asr",
+                        session_id=self.session_id,
+                        audio_duration_ms=round(audio_duration_ms, 2),
+                        min_asr_audio_ms=self._min_asr_audio_ms,
+                    )
+                    self._audio_buffer.clear()
+                    self._vad.reset()
+                    self._state = PipelineState.IDLE
+                    yield "IDLE"
+                    return
+
+                self._state = PipelineState.PROCESSING
+                yield "PROCESSING"
 
                 logger.info(
                     "speech_ended",
@@ -212,7 +221,8 @@ class Orchestrator:
             and audio_duration_ms > 2000  # Only stream for >2s audio
         )
 
-        transcript_parts = []
+        transcript = ""
+        asr_latency_ms = 0.0
 
         if use_streaming:
             # Streaming ASR - get partial results for faster TTFA
@@ -226,10 +236,12 @@ class Orchestrator:
                 audio,
                 chunk_duration_ms=2000,
             ):
-                if asr_result.text:
-                    transcript_parts.append(asr_result.text)
-
-            transcript = " ".join(transcript_parts).strip()
+                if not asr_result.text:
+                    continue
+                if asr_result.is_final:
+                    transcript = asr_result.text.strip()
+            if not transcript:
+                logger.info("empty_streaming_transcript", session_id=self.session_id)
             asr_latency_ms = audio_duration_ms  # Approximation for streaming
 
         else:

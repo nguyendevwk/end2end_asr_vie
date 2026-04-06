@@ -65,6 +65,7 @@ class VADService:
             self._iterator = _VADIterator(
                 model=self._model,
                 threshold=self._config.threshold,
+                min_speech_duration_ms=self._config.min_speech_ms,
                 min_silence_duration_ms=self._config.min_silence_ms,
                 speech_pad_ms=self._config.speech_pad_ms,
             )
@@ -149,16 +150,19 @@ class _VADIterator:
         self,
         model: torch.nn.Module,
         threshold: float = 0.5,
+        min_speech_duration_ms: int = 250,
         min_silence_duration_ms: int = 1000,
         speech_pad_ms: int = 30,
     ) -> None:
         self._model = model
         self._threshold = threshold
+        self._min_speech_samples = SAMPLE_RATE * min_speech_duration_ms // 1000
         self._min_silence_samples = SAMPLE_RATE * min_silence_duration_ms // 1000
         self._speech_pad_samples = SAMPLE_RATE * speech_pad_ms // 1000
 
         # State
         self._triggered = False
+        self._speech_start = 0
         self._temp_end = 0
         self._current_sample = 0
 
@@ -169,6 +173,7 @@ class _VADIterator:
         """Reset internal state."""
         self._model.reset_states()
         self._triggered = False
+        self._speech_start = 0
         self._temp_end = 0
         self._current_sample = 0
         self._buffer = np.array([], dtype=np.float32)
@@ -212,11 +217,20 @@ class _VADIterator:
             # State machine for speech detection
             if speech_prob >= self._threshold:
                 if not self._triggered:
-                    # Speech started
-                    self._triggered = True
-                    event = "start"
-                self._temp_end = 0
+                    if self._speech_start == 0:
+                        self._speech_start = self._current_sample
+                    if (
+                        self._current_sample - self._speech_start
+                        >= self._min_speech_samples
+                    ):
+                        # Speech started only after minimum speech duration
+                        self._triggered = True
+                        event = "start"
+                        self._temp_end = 0
+                else:
+                    self._temp_end = 0
             else:
+                self._speech_start = 0
                 if self._triggered:
                     if self._temp_end == 0:
                         self._temp_end = self._current_sample

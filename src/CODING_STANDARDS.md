@@ -99,7 +99,7 @@ async def transcribe(audio, language=None):
     ...
 ```
 
-### 2.3 Docstrings (Google Style)
+### 2.3 Docstrings
 
 ```python
 async def synthesize(

@@ -7,105 +7,12 @@ from typing import TYPE_CHECKING, AsyncIterator
 import numpy as np
 
 from voice_agent.core import ASRConfig, ASRError, SAMPLE_RATE, TranscriptionResult
-from voice_agent.utils import Timer, get_audio_duration_ms, get_logger, pcm_to_numpy
+from voice_agent.utils import AudioPreprocessor, Timer, get_audio_duration_ms, get_logger, pcm_to_numpy
 
 if TYPE_CHECKING:
     from qwen_asr import Qwen3ASRModel
 
 logger = get_logger(__name__)
-
-
-class ASRPreprocessor:
-    """
-    Audio preprocessor optimized for ASR.
-
-    Applies normalization and cleanup to improve transcription accuracy.
-    """
-
-    def __init__(self, target_sample_rate: int = SAMPLE_RATE) -> None:
-        self._target_sr = target_sample_rate
-
-    def process(self, audio_np: np.ndarray) -> np.ndarray:
-        """
-        Preprocess audio for ASR.
-
-        Steps:
-        1. Remove DC offset
-        2. Trim silence at start/end
-        3. Normalize to [-1, 1] range
-        4. Apply pre-emphasis filter (boost high frequencies for speech clarity)
-
-        Args:
-            audio_np: Input audio as float32 numpy array
-
-        Returns:
-            Preprocessed audio
-        """
-        if len(audio_np) == 0:
-            return audio_np
-
-        # 1. Remove DC offset
-        audio_np = audio_np - np.mean(audio_np)
-
-        # 2. Trim silence (simple energy-based)
-        audio_np = self._trim_silence(audio_np)
-
-        if len(audio_np) == 0:
-            return audio_np
-
-        # 3. Normalize to peak amplitude
-        max_amp = np.max(np.abs(audio_np))
-        if max_amp > 0:
-            audio_np = audio_np / max_amp * 0.95  # Leave headroom
-
-        # 4. Pre-emphasis filter (improves speech recognition)
-        audio_np = self._pre_emphasis(audio_np, coef=0.97)
-
-        return audio_np.astype(np.float32)
-
-    def _trim_silence(
-        self,
-        audio: np.ndarray,
-        threshold_db: float = -40.0,
-        frame_length: int = 512,
-    ) -> np.ndarray:
-        """Trim leading/trailing silence based on energy threshold."""
-        if len(audio) < frame_length:
-            return audio
-
-        # Calculate frame energies
-        threshold = 10 ** (threshold_db / 20)
-        n_frames = len(audio) // frame_length
-
-        # Find first frame above threshold
-        start_frame = 0
-        for i in range(n_frames):
-            frame = audio[i * frame_length : (i + 1) * frame_length]
-            if np.max(np.abs(frame)) > threshold:
-                start_frame = i
-                break
-
-        # Find last frame above threshold
-        end_frame = n_frames
-        for i in range(n_frames - 1, -1, -1):
-            frame = audio[i * frame_length : (i + 1) * frame_length]
-            if np.max(np.abs(frame)) > threshold:
-                end_frame = i + 1
-                break
-
-        # Add padding (keep some context)
-        pad_frames = 2
-        start_frame = max(0, start_frame - pad_frames)
-        end_frame = min(n_frames, end_frame + pad_frames)
-
-        start_sample = start_frame * frame_length
-        end_sample = min(len(audio), end_frame * frame_length)
-
-        return audio[start_sample:end_sample]
-
-    def _pre_emphasis(self, audio: np.ndarray, coef: float = 0.97) -> np.ndarray:
-        """Apply pre-emphasis filter to boost high frequencies."""
-        return np.append(audio[0], audio[1:] - coef * audio[:-1])
 
 
 class ASRService:
@@ -115,12 +22,26 @@ class ASRService:
     Features:
     - Two backends: transformers (less VRAM) or vLLM (faster)
     - Audio preprocessing for improved accuracy
-    - Streaming transcription support
+    - Streaming with interim/final results
+    - Context overlapping for better accuracy
+    - Error recovery and timeout handling
+
+    Streaming Modes:
+    - transcribe(): Single-shot transcription
+    - transcribe_stream(): Process complete audio in chunks
+    - transcribe_realtime(): Live streaming with interim results
 
     Attributes:
         config: ASR configuration
         model_name: Name of the ASR model
     """
+
+    # Streaming parameters (tuned for Vietnamese)
+    INTERIM_RESULTS_ENABLED = True      # Emit interim results
+    SINGLE_UTTERANCE_MODE = False       # Stop on silence
+    OVERLAP_SAMPLES = 1600              # 100ms overlap at 16kHz
+    MIN_STABILITY_THRESHOLD = 0.8       # Stability threshold for interim results
+    MAX_ALTERNATIVES = 1                # Number of alternatives
 
     def __init__(self, config: ASRConfig | None = None) -> None:
         """
@@ -132,7 +53,7 @@ class ASRService:
         self._config = config or ASRConfig()
         self._model: Qwen3ASRModel | None = None
         self._started = False
-        self._preprocessor = ASRPreprocessor()
+        self._preprocessor = AudioPreprocessor()
 
     async def start(self) -> None:
         """Load ASR model with specified backend."""
@@ -228,7 +149,7 @@ class ASRService:
 
                 # Preprocess for better accuracy
                 if preprocess:
-                    audio_np = self._preprocessor.process(audio_np)
+                    audio_np = self._preprocessor.process_numpy(audio_np)
 
                 if len(audio_np) == 0:
                     return TranscriptionResult(text="", language="", latency_ms=0.0)
@@ -273,19 +194,29 @@ class ASRService:
         audio: bytes,
         language: str | None = None,
         chunk_duration_ms: int = 2000,
+        enable_interim: bool = True,
     ) -> AsyncIterator[TranscriptionResult]:
         """
-        Streaming transcription - process audio in chunks.
+        Streaming transcription with interim and final results.
 
-        Yields partial results as audio is processed for lower latency.
+        Process complete audio in chunks, yielding both interim (unstable) and
+        final (stable) results. Uses context overlapping to avoid word boundary issues.
 
         Args:
             audio: PCM S16LE audio bytes
-            language: Language hint
-            chunk_duration_ms: Duration of each chunk in ms
+            language: Language hint (None for auto-detect)
+            chunk_duration_ms: Duration of each chunk in ms (default 2000ms)
+            enable_interim: Emit interim results for lower perceived latency
 
         Yields:
-            TranscriptionResult for each chunk
+            TranscriptionResult with is_final=False for interim, True for final
+
+        Example:
+            async for result in asr.transcribe_stream(audio):
+                if result.is_final:
+                    final_transcript += result.text
+                else:
+                    show_interim(result.text)  # Update UI with interim
         """
         if not self._started or self._model is None:
             raise ASRError("ASR service not started")
@@ -296,25 +227,44 @@ class ASRService:
         # Convert to numpy
         audio_np = pcm_to_numpy(audio)
 
-        # Preprocess entire audio
-        audio_np = self._preprocessor.process(audio_np)
+        # Preprocess entire audio for consistency
+        audio_np = self._preprocessor.process_numpy(audio_np)
 
         if len(audio_np) == 0:
             return
 
-        # Calculate chunk size
+        # Calculate chunk parameters
         chunk_samples = int(SAMPLE_RATE * chunk_duration_ms / 1000)
+        overlap_samples = self.OVERLAP_SAMPLES  # 100ms overlap
         total_samples = len(audio_np)
-        n_chunks = (total_samples + chunk_samples - 1) // chunk_samples
+
+        # Calculate effective step (chunk - overlap)
+        step_samples = chunk_samples - overlap_samples
+        n_chunks = max(1, (total_samples - overlap_samples + step_samples - 1) // step_samples)
+
+        logger.debug(
+            "asr_stream_start",
+            total_samples=total_samples,
+            chunk_samples=chunk_samples,
+            overlap_samples=overlap_samples,
+            n_chunks=n_chunks,
+        )
 
         accumulated_text = ""
+        prev_text = ""
+        audio_offset_ms = 0.0
 
         for i in range(n_chunks):
-            start = i * chunk_samples
-            end = min((i + 1) * chunk_samples, total_samples)
+            # Calculate chunk boundaries with overlap
+            start = max(0, i * step_samples - (overlap_samples // 2 if i > 0 else 0))
+            end = min(total_samples, start + chunk_samples)
             chunk = audio_np[start:end]
 
-            if len(chunk) < SAMPLE_RATE * 0.1:  # Skip chunks < 100ms
+            is_last_chunk = (i == n_chunks - 1)
+            audio_offset_ms = start / SAMPLE_RATE * 1000
+
+            # Skip very short chunks (< 100ms)
+            if len(chunk) < SAMPLE_RATE * 0.1:
                 continue
 
             timer = Timer()
@@ -330,98 +280,317 @@ class ASRService:
                 text = result.text if result else ""
                 text = self._clean_text(text)
 
-                if text:
-                    accumulated_text += " " + text
+                if not text:
+                    continue
 
+                # Calculate stability based on text similarity with previous
+                stability = self._calculate_stability(prev_text, text)
+
+                # Determine if this should be final result
+                # Final if: last chunk OR high stability OR significant new content
+                is_final = is_last_chunk or (stability > self.MIN_STABILITY_THRESHOLD and len(text) > len(prev_text))
+
+                # Emit interim result first (if enabled and not final)
+                if enable_interim and not is_final:
                     yield TranscriptionResult(
                         text=text,
-                        language=result.language if result else "",
+                        language=result.language if result else "vi",
                         latency_ms=timer.elapsed_ms,
+                        is_final=False,
+                        stability=stability,
+                        confidence=0.0,  # Model doesn't provide confidence
+                        result_end_offset_ms=audio_offset_ms + len(chunk) / SAMPLE_RATE * 1000,
+                    )
+                    logger.debug(
+                        "asr_interim_result",
+                        chunk=i + 1,
+                        text=text[:50],
+                        stability=round(stability, 2),
                     )
 
+                # Emit final result
+                if is_final:
+                    # For final, use accumulated context
+                    final_text = self._merge_overlapping_text(accumulated_text, text)
+                    accumulated_text = final_text
+
+                    yield TranscriptionResult(
+                        text=text,  # Current chunk text (not accumulated)
+                        language=result.language if result else "vi",
+                        latency_ms=timer.elapsed_ms,
+                        is_final=True,
+                        stability=1.0,
+                        confidence=0.0,
+                        result_end_offset_ms=audio_offset_ms + len(chunk) / SAMPLE_RATE * 1000,
+                    )
                     logger.debug(
-                        "asr_stream_chunk",
+                        "asr_final_result",
                         chunk=i + 1,
-                        total_chunks=n_chunks,
+                        n_chunks=n_chunks,
                         text=text[:50],
                         latency_ms=round(timer.elapsed_ms, 2),
                     )
 
+                prev_text = text
+
             except Exception as e:
                 logger.error("asr_stream_chunk_failed", chunk=i, error=str(e))
-                # Continue with next chunk
+                # Continue processing - don't break the stream
+                continue
 
-    async def transcribe_progressive(
+        logger.info(
+            "asr_stream_complete",
+            n_chunks=n_chunks,
+            total_text_length=len(accumulated_text),
+        )
+
+    def _calculate_stability(self, prev_text: str, current_text: str) -> float:
+        """
+        Calculate stability score (0-1) based on text similarity.
+
+        Higher stability means the transcript is less likely to change.
+        This is uses this to indicate how "stable" interim results are.
+        """
+        if not prev_text:
+            return 0.5  # First result, medium stability
+
+        if not current_text:
+            return 0.0
+
+        # Simple overlap-based stability
+        prev_words = prev_text.lower().split()
+        curr_words = current_text.lower().split()
+
+        if not prev_words or not curr_words:
+            return 0.5
+
+        # Count matching words from the start
+        matching = 0
+        for p, c in zip(prev_words, curr_words):
+            if p == c:
+                matching += 1
+            else:
+                break
+
+        # Stability = ratio of matching prefix
+        stability = matching / max(len(prev_words), len(curr_words))
+
+        # Boost stability if texts are very similar
+        if prev_text.strip() == current_text.strip():
+            stability = 1.0
+
+        return min(1.0, stability)
+
+    def _merge_overlapping_text(self, accumulated: str, new_text: str) -> str:
+        """
+        Merge overlapping text segments intelligently.
+
+        Handles the overlap between chunks to avoid duplicate words.
+        """
+        if not accumulated:
+            return new_text
+
+        accumulated_words = accumulated.split()
+        new_words = new_text.split()
+
+        if not accumulated_words or not new_words:
+            return accumulated + " " + new_text
+
+        # Find overlap point
+        # Look for common suffix in accumulated and prefix in new_text
+        max_overlap = min(5, len(accumulated_words), len(new_words))
+
+        for overlap_len in range(max_overlap, 0, -1):
+            if accumulated_words[-overlap_len:] == new_words[:overlap_len]:
+                # Found overlap, merge without duplicates
+                return " ".join(accumulated_words + new_words[overlap_len:])
+
+        # No overlap found, just concatenate
+        return accumulated + " " + new_text
+
+    async def transcribe_realtime(
         self,
         audio_stream: AsyncIterator[bytes],
         min_chunk_ms: int = 500,
+        max_chunk_ms: int = 3000,
+        silence_timeout_ms: int = 1000,
     ) -> AsyncIterator[TranscriptionResult]:
         """
-        Progressive transcription - transcribe as audio arrives.
+        Real-time streaming transcription.
 
-        Processes audio stream in real-time, yielding partial transcripts
-        as they become available. Useful for live transcription.
+        Processes live audio stream with:
+        - Interim results for immediate feedback
+        - Final results when speech segment ends
+        - Automatic silence detection and segmentation
+        - Buffer management and error recovery
+
+        This is the recommended method for live microphone input.
 
         Args:
-            audio_stream: Stream of PCM audio chunks
-            min_chunk_ms: Minimum chunk duration to process (default 500ms)
+            audio_stream: Async generator yielding PCM S16LE audio chunks
+            min_chunk_ms: Minimum audio to accumulate before processing (500ms)
+            max_chunk_ms: Maximum audio before forced processing (3000ms)
+            silence_timeout_ms: Silence duration to trigger final result (1000ms)
 
         Yields:
-            TranscriptionResult with partial/final transcripts
+            TranscriptionResult with is_final flag:
+            - is_final=False: Interim result (may change)
+            - is_final=True: Final result (stable, won't change)
 
-        Note:
-            This provides better real-time feedback than transcribe_stream,
-            but may have lower accuracy due to smaller context windows.
+        Example:
+            async for result in asr.transcribe_realtime(mic_stream()):
+                if result.is_final:
+                    process_final(result.text)
+                else:
+                    update_display(result.text)  # Show interim
         """
         if not self._started or self._model is None:
             raise ASRError("ASR service not started")
 
+        # Buffer for accumulating audio
         buffer = bytearray()
-        min_chunk_bytes = int(SAMPLE_RATE * 2 * min_chunk_ms / 1000)  # 2 bytes per sample
+        min_chunk_bytes = int(SAMPLE_RATE * 2 * min_chunk_ms / 1000)
+        max_chunk_bytes = int(SAMPLE_RATE * 2 * max_chunk_ms / 1000)
 
-        logger.debug(
-            "asr_progressive_start",
+        # State tracking
+        prev_text = ""
+        total_processed_ms = 0.0
+        chunks_processed = 0
+        last_speech_time = 0.0
+
+        logger.info(
+            "asr_realtime_start",
             min_chunk_ms=min_chunk_ms,
-            min_chunk_bytes=min_chunk_bytes,
+            max_chunk_ms=max_chunk_ms,
+            silence_timeout_ms=silence_timeout_ms,
         )
 
-        async for audio_chunk in audio_stream:
-            buffer.extend(audio_chunk)
+        try:
+            async for audio_chunk in audio_stream:
+                buffer.extend(audio_chunk)
+                current_time_ms = len(buffer) / (SAMPLE_RATE * 2) * 1000
 
-            # Process when buffer reaches minimum size
-            if len(buffer) >= min_chunk_bytes:
+                # Check if we should process
+                should_process = False
+                force_final = False
+
+                if len(buffer) >= max_chunk_bytes:
+                    # Max buffer reached - force processing
+                    should_process = True
+                    force_final = True
+                    logger.debug("asr_max_buffer_reached", buffer_ms=current_time_ms)
+                elif len(buffer) >= min_chunk_bytes:
+                    # Min buffer reached - process for interim
+                    should_process = True
+
+                if not should_process:
+                    continue
+
+                # Process current buffer
                 chunk_to_process = bytes(buffer)
-                buffer.clear()
+                chunk_duration_ms = len(chunk_to_process) / (SAMPLE_RATE * 2) * 1000
 
-                # Transcribe chunk
+                timer = Timer()
                 try:
-                    result = await self.transcribe(
-                        chunk_to_process,
-                        preprocess=self._config.preprocess,
-                    )
-
-                    if result.text.strip():
-                        logger.debug(
-                            "asr_progressive_chunk",
-                            text=result.text[:50],
-                            chunk_bytes=len(chunk_to_process),
+                    with timer:
+                        result = await self.transcribe(
+                            chunk_to_process,
+                            preprocess=self._config.preprocess,
                         )
-                        yield result
+
+                    text = result.text.strip()
+                    chunks_processed += 1
+
+                    if text:
+                        last_speech_time = current_time_ms
+
+                        # Calculate stability
+                        stability = self._calculate_stability(prev_text, text)
+
+                        # Determine if final
+                        # Final if: forced OR high stability with significant content
+                        is_final = force_final or (
+                            stability > self.MIN_STABILITY_THRESHOLD
+                            and len(text) > 10
+                        )
+
+                        yield TranscriptionResult(
+                            text=text,
+                            language=result.language or "vi",
+                            latency_ms=timer.elapsed_ms,
+                            is_final=is_final,
+                            stability=stability,
+                            confidence=0.0,
+                            result_end_offset_ms=total_processed_ms + chunk_duration_ms,
+                        )
+
+                        logger.debug(
+                            "asr_realtime_result",
+                            is_final=is_final,
+                            stability=round(stability, 2),
+                            text=text[:50],
+                            latency_ms=round(timer.elapsed_ms, 2),
+                        )
+
+                        prev_text = text
+
+                        # If final, clear buffer completely
+                        if is_final:
+                            buffer.clear()
+                            prev_text = ""
+                        else:
+                            # Keep overlap for context
+                            overlap_bytes = min(len(buffer), self.OVERLAP_SAMPLES * 2)
+                            buffer = bytearray(buffer[-overlap_bytes:])
+
+                    elif force_final and prev_text:
+                        # No new text but forced - emit final for previous
+                        yield TranscriptionResult(
+                            text=prev_text,
+                            language="vi",
+                            latency_ms=timer.elapsed_ms,
+                            is_final=True,
+                            stability=1.0,
+                            confidence=0.0,
+                            result_end_offset_ms=total_processed_ms + chunk_duration_ms,
+                        )
+                        buffer.clear()
+                        prev_text = ""
+
+                    total_processed_ms += chunk_duration_ms
 
                 except Exception as e:
-                    logger.error("asr_progressive_chunk_failed", error=str(e))
-                    # Continue processing next chunks
+                    logger.error("asr_realtime_chunk_failed", error=str(e))
+                    # Don't clear buffer on error - retry with more audio
+                    continue
 
-        # Process remaining buffer
-        if len(buffer) > SAMPLE_RATE * 2 * 0.1:  # > 100ms
-            try:
-                result = await self.transcribe(bytes(buffer), preprocess=self._config.preprocess)
-                if result.text.strip():
-                    yield result
-            except Exception as e:
-                logger.error("asr_progressive_final_failed", error=str(e))
+            # Process remaining buffer as final
+            if len(buffer) > SAMPLE_RATE * 2 * 0.1:  # > 100ms
+                try:
+                    result = await self.transcribe(bytes(buffer), preprocess=self._config.preprocess)
+                    if result.text.strip():
+                        yield TranscriptionResult(
+                            text=result.text.strip(),
+                            language=result.language or "vi",
+                            latency_ms=result.latency_ms,
+                            is_final=True,
+                            stability=1.0,
+                            confidence=0.0,
+                            result_end_offset_ms=total_processed_ms + len(buffer) / (SAMPLE_RATE * 2) * 1000,
+                        )
+                except Exception as e:
+                    logger.error("asr_realtime_final_failed", error=str(e))
 
-        logger.debug("asr_progressive_complete")
+        finally:
+            logger.info(
+                "asr_realtime_complete",
+                chunks_processed=chunks_processed,
+                total_processed_ms=round(total_processed_ms, 2),
+            )
+
+    # Alias for backwards compatibility
+    transcribe_progressive = transcribe_realtime
+
     async def transcribe_numpy(
         self,
         audio_np: np.ndarray,
@@ -455,7 +624,7 @@ class ASRService:
             with timer:
                 # Preprocess
                 if preprocess:
-                    audio_np = self._preprocessor.process(audio_np)
+                    audio_np = self._preprocessor.process_numpy(audio_np)
 
                 if len(audio_np) == 0:
                     return TranscriptionResult(text="", language="", latency_ms=0.0)
