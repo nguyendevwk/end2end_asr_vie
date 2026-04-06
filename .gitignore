@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+.env.local
+
+# UV
+uv.lock
+
+# Models (large files)
+src/models/asr/*.pt
+src/models/asr/*.bin
+src/models/asr/*.safetensors
+src/models/tts/*.pt
+src/models/tts/*.bin
+src/models/tts/*.safetensors
+src/models/vad/*.pt
+src/models/vad/*.jit
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
+*.egg-info/
