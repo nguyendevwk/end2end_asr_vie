@@ -64,7 +64,7 @@ src/
 # ✅ ĐÚNG
 class ASRService:           # PascalCase cho class
     sample_rate: int        # snake_case cho attributes
-    
+
 def process_audio():        # snake_case cho functions
     pass
 
@@ -108,17 +108,17 @@ async def synthesize(
 ) -> tuple[bytes, int]:
     """
     Synthesize text to speech audio.
-    
+
     Args:
         text: Input text to synthesize
         voice: Voice ID (default: "default")
-    
+
     Returns:
         Tuple of (audio_bytes, sample_rate)
-    
+
     Raises:
         TTSError: If synthesis fails
-    
+
     Example:
         >>> audio, sr = await tts.synthesize("Xin chào")
     """
@@ -133,7 +133,7 @@ from typing import Protocol
 # 1. Protocol/Interface đầu tiên
 class IAudioService(Protocol):
     """Interface for audio services."""
-    
+
     async def process(self, audio: bytes) -> bytes:
         ...
 
@@ -149,25 +149,25 @@ class AudioConfig:
 class ASRService:
     """
     Automatic Speech Recognition using Qwen3-ASR.
-    
+
     Attributes:
         model: vLLM model instance
         config: ASR configuration
     """
-    
+
     def __init__(self, config: ASRConfig) -> None:
         self._config = config
         self._model: LLM | None = None
         self._logger = get_logger(__name__)
-    
+
     async def start(self) -> None:
         """Initialize and load model."""
         ...
-    
+
     async def stop(self) -> None:
         """Cleanup resources."""
         ...
-    
+
     async def transcribe(self, audio: bytes) -> str:
         """Transcribe audio to text."""
         ...
@@ -182,11 +182,11 @@ class ASRService:
 ```python
 class BaseService:
     """Base class for all services with lifecycle management."""
-    
+
     def __init__(self) -> None:
         self._started = False
         self._logger = get_logger(self.__class__.__name__)
-    
+
     async def start(self) -> None:
         """Initialize service. Call before using."""
         if self._started:
@@ -195,7 +195,7 @@ class BaseService:
         await self._on_start()
         self._started = True
         self._logger.info("started")
-    
+
     async def stop(self) -> None:
         """Cleanup service. Call when done."""
         if not self._started:
@@ -204,11 +204,11 @@ class BaseService:
         await self._on_stop()
         self._started = False
         self._logger.info("stopped")
-    
+
     async def _on_start(self) -> None:
         """Override in subclass."""
         pass
-    
+
     async def _on_stop(self) -> None:
         """Override in subclass."""
         pass
@@ -250,7 +250,7 @@ async def process_pipeline(audio: bytes) -> PipelineResult:
     async with asyncio.TaskGroup() as tg:
         vad_task = tg.create_task(vad.detect(audio))
         preprocess_task = tg.create_task(preprocess(audio))
-    
+
     return PipelineResult(
         vad=vad_task.result(),
         audio=preprocess_task.result()
@@ -312,7 +312,7 @@ async def transcribe(self, audio: bytes) -> str:
 async def process(self, audio: bytes) -> str:
     with Timer() as t:
         result = await self._transcribe(audio)
-    
+
     logger.info(
         "process_complete",
         latency_ms=t.elapsed_ms,
@@ -348,15 +348,15 @@ async def generate_response(
 ) -> AsyncIterator[str]:
     """Stream LLM response sentence by sentence."""
     buffer = ""
-    
+
     async for token in self._llm.stream(query):
         buffer += token
-        
+
         # Yield complete sentences immediately
         if any(buffer.endswith(p) for p in ".!?。"):
             yield buffer.strip()
             buffer = ""
-    
+
     if buffer.strip():
         yield buffer.strip()
 ```
@@ -367,7 +367,7 @@ async def generate_response(
 # ✅ ĐÚNG - Process TTS while LLM is generating
 async def speak_response(self, query: str) -> AsyncIterator[bytes]:
     """Generate and speak response with minimal latency."""
-    
+
     async for sentence in self._llm.generate(query):
         # Start TTS immediately for each sentence
         audio = await self._tts.synthesize(sentence)
@@ -382,19 +382,19 @@ from collections import deque
 
 class AudioBuffer:
     """Fixed-size audio buffer with O(1) operations."""
-    
+
     __slots__ = ("_buffer", "_max_chunks")
-    
+
     def __init__(self, max_duration_ms: int, chunk_ms: int) -> None:
         self._max_chunks = max_duration_ms // chunk_ms
         self._buffer: deque[bytes] = deque(maxlen=self._max_chunks)
-    
+
     def add(self, chunk: bytes) -> None:
         self._buffer.append(chunk)
-    
+
     def get_all(self) -> bytes:
         return b"".join(self._buffer)
-    
+
     def clear(self) -> None:
         self._buffer.clear()
 ```
@@ -411,7 +411,7 @@ from voice_agent.services.asr import ASRService
 
 class TestASRService:
     """Tests for ASR service."""
-    
+
     @pytest.fixture
     async def service(self):
         """Create service for testing."""
@@ -419,19 +419,19 @@ class TestASRService:
         await svc.start()
         yield svc
         await svc.stop()
-    
+
     async def test_transcribe_vietnamese(self, service: ASRService):
         """Should transcribe Vietnamese audio correctly."""
         audio = load_test_audio("vietnamese_hello.wav")
-        
+
         result = await service.transcribe(audio)
-        
+
         assert "xin chào" in result.lower()
-    
+
     async def test_transcribe_empty_audio(self, service: ASRService):
         """Should handle empty audio gracefully."""
         result = await service.transcribe(b"")
-        
+
         assert result == ""
 ```
 
@@ -443,15 +443,15 @@ from voice_agent.utils.monitor import Timer
 
 class TestLatency:
     """Latency benchmark tests."""
-    
+
     @pytest.mark.benchmark
     async def test_asr_latency(self, asr_service: ASRService):
         """ASR should complete within 500ms for 3s audio."""
         audio = generate_3s_audio()
-        
+
         with Timer() as t:
             await asr_service.transcribe(audio)
-        
+
         assert t.elapsed_ms < 500, f"ASR too slow: {t.elapsed_ms}ms"
 ```
 
@@ -470,20 +470,20 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "websockets>=15.0",
-    
+
     # AI/ML
     "torch>=2.5.0",
     "torchaudio>=2.5.0",
     "qwen-asr[vllm]>=0.1.0",      # Qwen3-ASR with vLLM
     "qwen-tts>=0.1.0",             # Gwen-TTS
-    
+
     # LLM Client
     "openai>=1.50.0",              # Groq compatible
-    
+
     # Audio
     "numpy>=2.0.0",
     "soundfile>=0.12.0",
-    
+
     # Utils
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
