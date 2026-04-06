@@ -19,7 +19,7 @@ Check server health and service status.
   "uptime_seconds": 123.45,
   "services": {
     "vad": "ready",
-    "asr": "ready", 
+    "asr": "ready",
     "llm": "ready",
     "tts": "ready"
   }
@@ -252,14 +252,14 @@ function base64ToFloat32(base64) {
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  
+
   const int16 = new Int16Array(bytes.buffer);
   const float32 = new Float32Array(int16.length);
-  
+
   for (let i = 0; i < int16.length; i++) {
     float32[i] = int16[i] / 32768.0;  // Normalize to [-1, 1]
   }
-  
+
   return float32;
 }
 ```
@@ -638,12 +638,12 @@ import base64
 
 async def voice_client():
     uri = "ws://localhost:8000/ws"
-    
+
     async with websockets.connect(uri) as ws:
         # Send audio
         with open('input.pcm', 'rb') as f:
             audio_data = f.read()
-        
+
         message = {
             'type': 'audio',
             'data': base64.b64encode(audio_data).decode(),
@@ -651,20 +651,20 @@ async def voice_client():
             'channels': 1
         }
         await ws.send(json.dumps(message))
-        
+
         # Receive responses
         async for msg in ws:
             data = json.loads(msg)
-            
+
             if data['type'] == 'transcript':
                 print(f"Transcript: {data['text']}")
-            
+
             elif data['type'] == 'audio':
                 audio = base64.b64decode(data['data'])
                 with open('output.pcm', 'wb') as f:
                     f.write(audio)
                 print("Audio saved")
-            
+
             elif data['type'] == 'error':
                 print(f"Error: {data['message']}")
                 break

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, AsyncIterator
 
 import numpy as np
 import torch
@@ -167,6 +168,100 @@ class TTSService:
         except Exception as e:
             logger.error("tts_synthesize_failed", error=str(e), text=text[:50])
             raise TTSError(f"Synthesis failed: {e}") from e
+
+    async def synthesize_stream(
+        self,
+        text: str,
+        chunk_duration_ms: int = 100,
+    ) -> AsyncIterator[bytes]:
+        """
+        Stream audio chunks as they're generated (progressive synthesis).
+
+        For models that don't support true streaming, this simulates streaming
+        by generating full audio and yielding it in small chunks.
+
+        Args:
+            text: Input text to synthesize
+            chunk_duration_ms: Duration of each audio chunk (default 100ms)
+
+        Yields:
+            Audio chunks (PCM S16LE bytes)
+
+        Raises:
+            TTSError: If synthesis fails
+        """
+        if not self._started or self._model is None:
+            raise TTSError("TTS service not started")
+
+        if not text.strip():
+            return
+
+        logger.debug(
+            "tts_stream_start",
+            text_length=len(text),
+            chunk_duration_ms=chunk_duration_ms,
+        )
+
+        start_time = asyncio.get_event_loop().time()
+        first_chunk = True
+
+        try:
+            # Generate full audio (Gwen-TTS doesn't support progressive generation)
+            # TODO: Implement true streaming if model supports it
+            if self._config.voice_ref_audio and self._config.voice_ref_text:
+                wavs, sr = self._model.generate_voice_clone(
+                    text=text,
+                    language="Vietnamese",
+                    ref_audio=self._config.voice_ref_audio,
+                    ref_text=self._config.voice_ref_text,
+                    **self._generation_config,
+                )
+            else:
+                wavs, sr = self._model.generate(
+                    text=text,
+                    language="Vietnamese",
+                    **self._generation_config,
+                )
+
+            audio_np = wavs[0] if isinstance(wavs, list) else wavs
+
+            # Resample to 16kHz
+            if sr != SAMPLE_RATE:
+                audio_np = resample(audio_np, sr, SAMPLE_RATE)
+
+            # Calculate chunk size in samples
+            chunk_samples = int(SAMPLE_RATE * chunk_duration_ms / 1000)
+
+            # Yield audio in chunks
+            for i in range(0, len(audio_np), chunk_samples):
+                chunk = audio_np[i : i + chunk_samples]
+                chunk_bytes = numpy_to_pcm(chunk)
+
+                if first_chunk:
+                    ttfa_ms = (asyncio.get_event_loop().time() - start_time) * 1000
+                    logger.info(
+                        "tts_first_chunk",
+                        ttfa_ms=round(ttfa_ms, 2),
+                        text_length=len(text),
+                    )
+                    first_chunk = False
+
+                yield chunk_bytes
+
+                # Small delay to simulate real-time playback rate
+                # This prevents overwhelming the client buffer
+                await asyncio.sleep(chunk_duration_ms / 1000 * 0.8)
+
+            total_ms = (asyncio.get_event_loop().time() - start_time) * 1000
+            logger.debug(
+                "tts_stream_complete",
+                total_ms=round(total_ms, 2),
+                audio_duration_ms=round(len(audio_np) / SAMPLE_RATE * 1000, 2),
+            )
+
+        except Exception as e:
+            logger.error("tts_stream_failed", error=str(e), text=text[:50])
+            raise TTSError(f"Streaming synthesis failed: {e}") from e
 
     async def synthesize_numpy(self, text: str) -> tuple[np.ndarray, int]:
         """

@@ -524,15 +524,31 @@ HTML_TEMPLATE = """
             processor.connect(audioContext.destination);
         }
         
-        // === Audio Playback ===
+        // === Audio Playback (Streaming Optimized) ===
+        let playbackContext = null;
+        let nextPlayTime = 0;
+        
         function playAudio(arrayBuffer) {
+            // Initialize playback context if needed
+            if (!playbackContext) {
+                playbackContext = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 16000});
+                nextPlayTime = playbackContext.currentTime;
+            }
+            
+            // Queue audio for streaming playback
             audioQueue.push(arrayBuffer);
+            
+            // Track buffer level for smooth playback
+            const bufferMs = audioQueue.reduce((sum, buf) => sum + (buf.byteLength / 2 / 16000 * 1000), 0);
+            console.log('Audio queued, buffer:', Math.round(bufferMs) + 'ms, queue:', audioQueue.length);
+            
+            // Start playback immediately for low latency
             if (!isPlaying) {
                 playNextAudio();
             }
         }
         
-        async function playNextAudio() {
+        function playNextAudio() {
             if (audioQueue.length === 0) {
                 isPlaying = false;
                 return;
@@ -550,18 +566,25 @@ HTML_TEMPLATE = """
                 }
                 
                 // Create audio buffer
-                const audioBuffer = audioContext.createBuffer(1, float32Data.length, 16000);
+                const audioBuffer = playbackContext.createBuffer(1, float32Data.length, 16000);
                 audioBuffer.getChannelData(0).set(float32Data);
                 
-                // Play
-                const source = audioContext.createBufferSource();
+                // Play with precise scheduling for gapless streaming
+                const source = playbackContext.createBufferSource();
                 source.buffer = audioBuffer;
-                source.connect(audioContext.destination);
+                source.connect(playbackContext.destination);
                 source.onended = playNextAudio;
-                source.start();
+                
+                // Schedule at precise time for seamless audio
+                if (nextPlayTime <= playbackContext.currentTime) {
+                    nextPlayTime = playbackContext.currentTime + 0.005;
+                }
+                source.start(nextPlayTime);
+                nextPlayTime += audioBuffer.duration;
                 
             } catch (error) {
                 console.error('Playback error:', error);
+                isPlaying = false;
                 playNextAudio();
             }
         }

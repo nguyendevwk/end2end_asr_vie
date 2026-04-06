@@ -281,6 +281,7 @@ class Orchestrator:
         first_audio = True
         llm_start = asyncio.get_event_loop().time()
         ttft_ms = 0.0
+        ttfa_ms = 0.0
         total_tokens = 0
 
         async for sentence in self._llm.stream(transcript, self._history):
@@ -295,7 +296,7 @@ class Orchestrator:
             if first_audio:
                 ttft_ms = (asyncio.get_event_loop().time() - llm_start) * 1000
 
-            # === TTS ===
+            # === TTS Streaming ===
             if self._tts is None:
                 # TTS disabled - just log response
                 logger.info(
@@ -308,21 +309,42 @@ class Orchestrator:
                     first_audio = False
                 continue
 
-            tts_result = await self._tts.synthesize(sentence)
+            # Stream TTS audio chunks
+            tts_start = asyncio.get_event_loop().time()
+            chunk_count = 0
+            chunk_ms = self._tts._config.stream_chunk_ms
 
-            self._monitor.record_tts(
-                tts_result.latency_ms,
-                len(sentence),
-                tts_result.duration_ms,
+            async for audio_chunk in self._tts.synthesize_stream(
+                sentence, chunk_duration_ms=chunk_ms
+            ):
+                chunk_count += 1
+
+                # Record TTFA (Time to First Audio)
+                if first_audio:
+                    ttfa_ms = (asyncio.get_event_loop().time() - tts_start) * 1000
+                    self._monitor.record_first_audio()
+                    first_audio = False
+                    logger.info(
+                        "first_audio_chunk",
+                        session_id=self.session_id,
+                        ttft_ms=round(ttft_ms, 2),
+                        ttfa_ms=round(ttfa_ms, 2),
+                    )
+
+                # Postprocess and yield audio chunk
+                output_audio = self._postprocessor.process(audio_chunk)
+                yield output_audio
+
+            # Record TTS metrics for this sentence
+            tts_ms = (asyncio.get_event_loop().time() - tts_start) * 1000
+            self._monitor.record_tts(tts_ms, len(sentence), tts_ms)
+
+            logger.debug(
+                "sentence_complete",
+                session_id=self.session_id,
+                chunks=chunk_count,
+                tts_ms=round(tts_ms, 2),
             )
-
-            if first_audio:
-                self._monitor.record_first_audio()
-                first_audio = False
-
-            # Postprocess and yield audio
-            output_audio = self._postprocessor.process(tts_result.audio)
-            yield output_audio
 
         # Record LLM metrics
         llm_total_ms = (asyncio.get_event_loop().time() - llm_start) * 1000

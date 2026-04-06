@@ -67,7 +67,7 @@ class ASRConfig:
     max_new_tokens: int = 256
     gpu_memory_utilization: float = 0.3  # Reduced for smaller GPUs
     backend: str = "transformers"  # "transformers" (default, less VRAM) or "vllm" (faster)
-    streaming: bool = False  # Enable streaming transcription for lower latency
+    streaming: bool = True  # Enable streaming transcription for lower latency
     preprocess: bool = True  # Enable audio preprocessing for better accuracy
 
 
@@ -81,6 +81,7 @@ class TTSConfig:
     temperature: float = 0.3
     top_k: int = 20
     top_p: float = 0.9
+    stream_chunk_ms: int = 100  # Audio chunk duration for streaming (ms)
 
 
 @dataclass(frozen=True, slots=True)

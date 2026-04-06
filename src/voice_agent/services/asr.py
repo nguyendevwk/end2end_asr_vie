@@ -351,6 +351,77 @@ class ASRService:
                 logger.error("asr_stream_chunk_failed", chunk=i, error=str(e))
                 # Continue with next chunk
 
+    async def transcribe_progressive(
+        self,
+        audio_stream: AsyncIterator[bytes],
+        min_chunk_ms: int = 500,
+    ) -> AsyncIterator[TranscriptionResult]:
+        """
+        Progressive transcription - transcribe as audio arrives.
+
+        Processes audio stream in real-time, yielding partial transcripts
+        as they become available. Useful for live transcription.
+
+        Args:
+            audio_stream: Stream of PCM audio chunks
+            min_chunk_ms: Minimum chunk duration to process (default 500ms)
+
+        Yields:
+            TranscriptionResult with partial/final transcripts
+
+        Note:
+            This provides better real-time feedback than transcribe_stream,
+            but may have lower accuracy due to smaller context windows.
+        """
+        if not self._started or self._model is None:
+            raise ASRError("ASR service not started")
+
+        buffer = bytearray()
+        min_chunk_bytes = int(SAMPLE_RATE * 2 * min_chunk_ms / 1000)  # 2 bytes per sample
+
+        logger.debug(
+            "asr_progressive_start",
+            min_chunk_ms=min_chunk_ms,
+            min_chunk_bytes=min_chunk_bytes,
+        )
+
+        async for audio_chunk in audio_stream:
+            buffer.extend(audio_chunk)
+
+            # Process when buffer reaches minimum size
+            if len(buffer) >= min_chunk_bytes:
+                chunk_to_process = bytes(buffer)
+                buffer.clear()
+
+                # Transcribe chunk
+                try:
+                    result = await self.transcribe(
+                        chunk_to_process,
+                        preprocess=self._config.preprocess,
+                    )
+
+                    if result.text.strip():
+                        logger.debug(
+                            "asr_progressive_chunk",
+                            text=result.text[:50],
+                            chunk_bytes=len(chunk_to_process),
+                        )
+                        yield result
+
+                except Exception as e:
+                    logger.error("asr_progressive_chunk_failed", error=str(e))
+                    # Continue processing next chunks
+
+        # Process remaining buffer
+        if len(buffer) > SAMPLE_RATE * 2 * 0.1:  # > 100ms
+            try:
+                result = await self.transcribe(bytes(buffer), preprocess=self._config.preprocess)
+                if result.text.strip():
+                    yield result
+            except Exception as e:
+                logger.error("asr_progressive_final_failed", error=str(e))
+
+        logger.debug("asr_progressive_complete")
     async def transcribe_numpy(
         self,
         audio_np: np.ndarray,
