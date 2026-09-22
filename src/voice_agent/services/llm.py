@@ -234,13 +234,42 @@ class LLMService:
         query: str,
         history: list[dict[str, str]] | None,
     ) -> list[dict[str, str]]:
-        """Build messages list for API call."""
+        """Build messages list for API call, truncating history to fit context window."""
         messages: list[dict[str, str]] = [
             {"role": "system", "content": self._config.system_prompt},
         ]
 
         if history:
-            messages.extend(history)
+            # Estimate tokens: ~2 chars per token for Vietnamese/Chinese, ~4 for English
+            # Use conservative estimate of 2 chars/token to avoid overflow
+            max_chars = self._config.max_tokens * 2 * 4  # 4x safety margin
+            system_chars = len(self._config.system_prompt)
+            query_chars = len(query)
+            available = max_chars - system_chars - query_chars
+
+            # Add history from most recent, truncating oldest
+            added_chars = 0
+            for msg in reversed(history):
+                msg_chars = len(msg.get("content", ""))
+                if added_chars + msg_chars > available:
+                    break
+                added_chars += msg_chars
+            else:
+                # All history fits
+                messages.extend(history)
+                messages.append({"role": "user", "content": query})
+                return messages
+
+            # Partial history: take the most recent messages that fit
+            trimmed: list[dict[str, str]] = []
+            added_chars = 0
+            for msg in reversed(history):
+                msg_chars = len(msg.get("content", ""))
+                if added_chars + msg_chars > available:
+                    break
+                added_chars += msg_chars
+                trimmed.insert(0, msg)
+            messages.extend(trimmed)
 
         messages.append({"role": "user", "content": query})
 
