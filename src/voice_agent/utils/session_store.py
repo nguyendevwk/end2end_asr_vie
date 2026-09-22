@@ -27,6 +27,7 @@ class SessionStore:
         self._max = max_sessions
         self._sessions: dict[str, SessionSnapshot] = {}
         self._lock = threading.Lock()
+        self._last_sweep = time.time()
 
     def save(self, snapshot: SessionSnapshot) -> None:
         snapshot.updated_at = time.time()
@@ -36,6 +37,13 @@ class SessionStore:
                 oldest = min(self._sessions, key=lambda k: self._sessions[k].updated_at)
                 del self._sessions[oldest]
             self._sessions[snapshot.session_id] = snapshot
+            # Periodic sweep to remove expired sessions (every 60s)
+            now = time.time()
+            if now - self._last_sweep > 60:
+                self._last_sweep = now
+                expired = [k for k, v in self._sessions.items() if now - v.updated_at > self._ttl_s]
+                for k in expired:
+                    del self._sessions[k]
 
     def load(self, session_id: str) -> SessionSnapshot | None:
         with self._lock:
