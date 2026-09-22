@@ -80,9 +80,10 @@ _session_store: SessionStore = get_session_store()
 
 def _sync_runtime_knobs() -> None:
     """Apply settings to shared production primitives (called on startup)."""
-    global _connection_gate, _infer_semaphore
-    _connection_gate = AdmissionGate(max_concurrent=settings.max_ccu)
-    _infer_semaphore = asyncio.Semaphore(settings.max_inflight_infer)
+    # Reset existing objects in-place instead of replacing them,
+    # so existing handler references stay valid.
+    _connection_gate._max = settings.max_ccu
+    _infer_semaphore._value = settings.max_inflight_infer
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
@@ -227,6 +228,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     except Exception as e:
         logger.error("❌ startup_failed", error=str(e), exc_info=True)
+        # Cleanup already-started services to prevent GPU memory leak
+        cleanup = []
+        if llm_service:
+            cleanup.append(llm_service.stop())
+        if tts_service:
+            cleanup.append(tts_service.stop())
+        if asr_service:
+            cleanup.append(asr_service.stop())
+        if vad_service:
+            cleanup.append(vad_service.stop())
+        if cleanup:
+            await asyncio.gather(*cleanup, return_exceptions=True)
         raise
 
     yield
@@ -315,7 +328,7 @@ Server → Client: Binary (TTS audio) or Text (events)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # For demo; restrict in production
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
