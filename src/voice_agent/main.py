@@ -85,6 +85,7 @@ def _sync_runtime_knobs() -> None:
     # so existing handler references stay valid.
     _connection_gate._max = settings.max_ccu
     _infer_semaphore._value = settings.max_inflight_infer
+    _session_store.configure(ttl_s=settings.session_ttl_s)
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗

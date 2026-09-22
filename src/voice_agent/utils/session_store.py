@@ -68,6 +68,13 @@ class SessionStore:
                 del self._sessions[k]
             return len(expired)
 
+    def configure(self, *, ttl_s: float | None = None, max_sessions: int | None = None) -> None:
+        """Update store parameters at runtime (startup knob sync)."""
+        if ttl_s is not None:
+            self._ttl_s = ttl_s
+        if max_sessions is not None:
+            self._max = max_sessions
+
     @property
     def size(self) -> int:
         return len(self._sessions)
