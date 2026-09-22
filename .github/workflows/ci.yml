@@ -24,7 +24,7 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         working-directory: src
-        run: uv sync
+        run: uv sync --extra dev
       - name: Ruff check
         working-directory: src
         run: uv run ruff check voice_agent/
@@ -45,7 +45,7 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         working-directory: src
-        run: uv sync
+        run: uv sync --extra dev
       - name: Mypy
         working-directory: src
         run: uv run mypy voice_agent/
@@ -63,7 +63,7 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         working-directory: src
-        run: uv sync
+        run: uv sync --extra dev
       - name: Run tests
         working-directory: src
         run: uv run pytest tests/ -m "not slow and not gpu" -v --tb=short
