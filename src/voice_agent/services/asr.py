@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, AsyncIterator
 
 import numpy as np
@@ -154,9 +155,12 @@ class ASRService:
                 if len(audio_np) == 0:
                     return TranscriptionResult(text="", language="", latency_ms=0.0)
 
-                # Transcribe
+                # Transcribe (blocking HF/vLLM call -> worker thread
+                # so the FastAPI event loop stays responsive)
                 lang = language or self._config.language
-                results = self._model.transcribe(
+                model = self._model
+                results = await asyncio.to_thread(
+                    model.transcribe,
                     audio=(audio_np, SAMPLE_RATE),
                     language=lang,
                 )
@@ -271,7 +275,9 @@ class ASRService:
             try:
                 with timer:
                     lang = language or self._config.language
-                    results = self._model.transcribe(
+                    model = self._model
+                    results = await asyncio.to_thread(
+                        model.transcribe,
                         audio=(chunk, SAMPLE_RATE),
                         language=lang,
                     )
@@ -629,9 +635,11 @@ class ASRService:
                 if len(audio_np) == 0:
                     return TranscriptionResult(text="", language="", latency_ms=0.0)
 
-                # Transcribe directly from numpy
+                # Transcribe directly from numpy (blocking -> worker thread)
                 lang = language or self._config.language
-                results = self._model.transcribe(
+                model = self._model
+                results = await asyncio.to_thread(
+                    model.transcribe,
                     audio=(audio_np, sample_rate),
                     language=lang,
                 )
@@ -689,3 +697,13 @@ class ASRService:
     def model_name(self) -> str:
         """Get model name."""
         return self._config.model_name
+
+    @property
+    def streaming(self) -> bool:
+        """Whether chunked streaming transcription is enabled."""
+        return self._config.streaming
+
+    @property
+    def preprocess_enabled(self) -> bool:
+        """Whether audio preprocessing is enabled."""
+        return self._config.preprocess
