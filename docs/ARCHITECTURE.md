@@ -1,14 +1,14 @@
-# Kiến trúc hệ thống Voice Agent
+# Voice Agent System Architecture
 
-## 🏗️ Tổng quan
+## Overview
 
-Voice Agent sử dụng kiến trúc pipeline 4 giai đoạn:
+Voice Agent uses a 4-stage pipeline architecture:
 
 ```
 Audio Input → VAD → ASR → LLM → TTS → Audio Output
 ```
 
-### Luồng xử lý chi tiết
+### Detailed Processing Flow
 
 ```
 ┌─────────────┐
@@ -38,49 +38,49 @@ Audio Input → VAD → ASR → LLM → TTS → Audio Output
                └────────┘
 ```
 
-## 🔧 Các thành phần chính
+## Main Components
 
 ### 1. VAD Service (Voice Activity Detection)
 
-**Công nghệ:** Silero VAD v5 (TorchScript JIT)
+**Technology:** Silero VAD v5 (TorchScript JIT)
 
-**Chức năng:**
+**Functions:**
 
-- Phát hiện giọng nói trong audio stream
-- Tách các đoạn nói liên tục (utterances)
-- Buffer tự động cho Silero (yêu cầu 512 samples/chunk)
+- Detect voice in audio stream
+- Segment continuous speech (utterances)
+- Auto-buffering for Silero (requires 512 samples/chunk)
 
-**Đặc điểm:**
+**Characteristics:**
 
-- Model size: ~1.5MB (cực nhẹ)
+- Model size: ~1.5MB (very lightweight)
 - Latency: < 5ms
 - Accuracy: 95%+
-- Không cần GPU
+- No GPU required
 
-**Cấu hình:**
+**Configuration:**
 
 ```python
-VAD_THRESHOLD = 0.5      # Ngưỡng phát hiện giọng nói
-VAD_MIN_SILENCE = 300    # Im lặng tối thiểu để kết thúc utterance (ms)
-VAD_SPEECH_PAD = 300     # Padding trước/sau speech (ms)
+VAD_THRESHOLD = 0.5      # Voice detection threshold
+VAD_MIN_SILENCE = 300    # Minimum silence to end utterance (ms)
+VAD_SPEECH_PAD = 300     # Padding before/after speech (ms)
 ```
 
 ### 2. ASR Service (Automatic Speech Recognition)
 
-**Công nghệ:** Qwen3-ASR-0.6B
+**Technology:** Qwen3-ASR-0.6B
 
 **Backend options:**
 
 - `transformers` (default): 3GB VRAM, RTF ~0.20
-- `vllm`: 6GB+ VRAM, RTF ~0.08 (nhanh hơn)
+- `vllm`: 6GB+ VRAM, RTF ~0.08 (faster)
 
-**Chức năng:**
+**Functions:**
 
-- Chuyển audio sang text (tiếng Việt)
+- Convert audio to text (Vietnamese)
 - Preprocessing: DC removal, silence trim, pre-emphasis
-- Streaming support cho audio dài (chunks 2s)
+- Streaming support for long audio (2s chunks)
 
-**Pipeline xử lý:**
+**Processing Pipeline:**
 
 ```
 Raw Audio (PCM)
@@ -102,38 +102,38 @@ Text Cleaning:
 Transcript
 ```
 
-**Cấu hình:**
+**Configuration:**
 
 ```python
-ASR_BACKEND = "transformers"     # hoặc "vllm"
-ASR_GPU_MEMORY = 0.5             # Tỷ lệ VRAM sử dụng
-ASR_PREPROCESS = True            # Bật preprocessing
-ASR_STREAMING = True             # Bật streaming cho audio >2s
+ASR_BACKEND = "transformers"     # or "vllm"
+ASR_GPU_MEMORY = 0.5             # VRAM usage ratio
+ASR_PREPROCESS = True            # Enable preprocessing
+ASR_STREAMING = True             # Enable streaming for audio >2s
 ```
 
 **Optimization:**
 
-- Preprocessing: +4-8% accuracy trên audio chất lượng thấp
-- Streaming: Giảm TTFA (Time-to-First-Audio) từ 800ms → 400ms
+- Preprocessing: +4-8% accuracy on low quality audio
+- Streaming: Reduce TTFA (Time-to-First-Audio) from 800ms to 400ms
 
 ### 3. LLM Service
 
-**Công nghệ:** Groq Cloud API (llama-3.3-70b-versatile)
+**Technology:** Groq Cloud API (llama-3.3-70b-versatile)
 
-**Chức năng:**
+**Functions:**
 
-- Xử lý ngữ nghĩa từ transcript
-- Tạo response tự nhiên
+- Process semantics from transcript
+- Generate natural responses
 - Streaming text generation
 
 **System prompt:**
 
 ```
-Bạn là trợ lý AI thông minh, trả lời ngắn gọn, 
-tự nhiên bằng tiếng Việt, dưới 50 từ.
+You are a smart AI assistant, reply briefly,
+naturally in Vietnamese, under 50 words.
 ```
 
-**Cấu hình:**
+**Configuration:**
 
 ```python
 GROQ_API_KEY = "..."             # API key
@@ -144,11 +144,11 @@ GROQ_MAX_TOKENS = 150
 
 ### 4. TTS Service (Text-to-Speech)
 
-**Công nghệ:** Gwen-TTS 0.6B
+**Technology:** Gwen-TTS 0.6B
 
-**Chức năng:**
+**Functions:**
 
-- Chuyển text sang audio (tiếng Việt)
+- Convert text to audio (Vietnamese)
 - Voice cloning support
 - Streaming audio generation
 
@@ -158,7 +158,7 @@ GROQ_MAX_TOKENS = 150
 Text → Tokenizer → Gwen Model → Mel-Spectrogram → Vocoder → Audio
 ```
 
-**Cấu hình:**
+**Configuration:**
 
 ```python
 TTS_SAMPLE_RATE = 24000      # Output sample rate
@@ -167,26 +167,26 @@ TTS_SPEED = 1.0              # Speaking speed
 
 ### 5. Orchestrator (Pipeline Coordinator)
 
-**Chức năng:**
+**Functions:**
 
-- Điều phối toàn bộ pipeline
-- Quản lý state (IDLE → LISTENING → PROCESSING → SPEAKING)
-- Buffer quản lý audio stream
-- Service isolation (bật/tắt từng service để test)
+- Coordinate entire pipeline
+- Manage state (IDLE → LISTENING → PROCESSING → SPEAKING)
+- Buffer audio stream management
+- Service isolation (enable/disable each service for testing)
 
 **States:**
 
 ```python
-IDLE       # Chờ input
-LISTENING  # Đang thu âm
-PROCESSING # Đang xử lý (ASR + LLM)
-SPEAKING   # Đang phát audio response
+IDLE       # Waiting for input
+LISTENING  # Recording
+PROCESSING # Processing (ASR + LLM)
+SPEAKING   # Playing audio response
 ```
 
 **Service Isolation:**
 
 ```bash
-# Test riêng VAD
+# Test VAD only
 VAD_ENABLED=true
 ASR_ENABLED=false
 LLM_ENABLED=false
@@ -205,11 +205,11 @@ LLM_ENABLED=true
 TTS_ENABLED=true
 ```
 
-## 📊 Luồng dữ liệu
+## Data Flow
 
 ### WebSocket Protocol
 
-**Client → Server:**
+**Client to Server:**
 
 ```json
 {
@@ -220,7 +220,7 @@ TTS_ENABLED=true
 }
 ```
 
-**Server → Client:**
+**Server to Client:**
 
 ```json
 // State updates
@@ -228,7 +228,7 @@ TTS_ENABLED=true
 {"type": "state", "state": "PROCESSING"}
 
 // Transcript
-{"type": "transcript", "text": "xin chào"}
+{"type": "transcript", "text": "xin chao"}
 
 // Audio response
 {"type": "audio", "data": "base64_encoded_pcm"}
@@ -239,21 +239,21 @@ TTS_ENABLED=true
 
 ### Audio Format
 
-**Input (từ browser):**
+**Input (from browser):**
 
 - Format: PCM S16LE
 - Sample rate: 16000 Hz
 - Channels: Mono
 - Bit depth: 16-bit
 
-**Output (tới browser):**
+**Output (to browser):**
 
 - Format: PCM S16LE
-- Sample rate: 16000 Hz (resampled từ 24kHz)
+- Sample rate: 16000 Hz (resampled from 24kHz)
 - Channels: Mono
 - Bit depth: 16-bit
 
-## 🎯 Performance Metrics
+## Performance Metrics
 
 ### Latency Breakdown (target)
 
@@ -278,7 +278,7 @@ Total: 1.1 - 2.2s
 - ASR (transformers): ~2.5GB
 - TTS: ~1.5GB
 - VAD: 0 (CPU only)
-- **Total:** ~4GB (vừa khít)
+- **Total:** ~4GB (just fits)
 
 **CPU:**
 
@@ -288,50 +288,50 @@ Total: 1.1 - 2.2s
 
 **Throughput:**
 
-- Concurrent users: 1-2 (giới hạn bởi GPU)
+- Concurrent users: 1-2 (limited by GPU)
 - Audio streaming: 16kHz = 32KB/s
 
-## 🔒 Error Handling
+## Error Handling
 
 ### Graceful Degradation
 
-1. **ASR fails** → Trả về lỗi, không crash server
+1. **ASR fails** → Return error, do not crash server
 2. **LLM timeout** → Fallback: echo transcript
-3. **TTS fails** → Trả response dạng text
+3. **TTS fails** → Return response as text
 4. **VAD buffer overflow** → Auto-reset buffer
 
 ### Monitoring
 
 - Structlog JSON logging
 - Performance metrics (latency, RTF)
-- Error tracking với stack traces
+- Error tracking with stack traces
 - Resource monitoring (VRAM, CPU)
 
-## 🔧 Extensibility
+## Extensibility
 
-### Thêm service mới
+### Adding a New Service
 
 1. Implement interface protocol (`IXXXService`)
 2. Add to `services/__init__.py`
-3. Register trong `Orchestrator`
-4. Update config trong `.env`
+3. Register in `Orchestrator`
+4. Update config in `.env`
 
-### Thay đổi model
+### Changing Models
 
 **ASR:**
 
 ```python
 # src/voice_agent/config.py
-ASR_MODEL = "Qwen/Qwen3-ASR-0.6B"  # Đổi model khác
+ASR_MODEL = "Qwen/Qwen3-ASR-0.6B"  # Change to a different model
 ```
 
 **TTS:**
 
 ```python
-TTS_MODEL = "g-group-ai-lab/gwen-tts-0.6B"  # Đổi model khác
+TTS_MODEL = "g-group-ai-lab/gwen-tts-0.6B"  # Change to a different model
 ```
 
-## 📚 Tham khảo
+## References
 
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [Qwen3-ASR](https://huggingface.co/Qwen/Qwen3-ASR-0.6B)

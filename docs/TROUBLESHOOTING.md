@@ -1,89 +1,89 @@
-# Xử lý lỗi thường gặp
+# Common Troubleshooting
 
-## 🔧 Installation Issues
+## Installation Issues
 
-### Lỗi: Dependencies không resolve được
+### Error: Dependencies cannot be resolved
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
-× No solution found when resolving dependencies
+x No solution found when resolving dependencies
 ```
 
-**Nguyên nhân:** Conflict giữa qwen-asr và qwen-tts về transformers version
+**Cause:** Conflict between qwen-asr and qwen-tts regarding transformers version
 
-**Giải pháp:**
+**Solution:**
 
 ```bash
-# 1. Xóa lock file và cache
+# 1. Delete lock file and cache
 rm -f uv.lock
 rm -rf .venv
 
 # 2. Reinstall
 uv sync
 
-# 3. Nếu vẫn lỗi, force cài transformers trước
+# 3. If still failing, force install transformers first
 uv pip install transformers==4.57.6
 uv sync
 ```
 
-### Lỗi: CUDA not available
+### Error: CUDA not available
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```python
 torch.cuda.is_available() == False
 ```
 
-**Nguyên nhân:** PyTorch không detect GPU
+**Cause:** PyTorch cannot detect GPU
 
-**Giải pháp:**
+**Solution:**
 
 ```bash
 # 1. Check NVIDIA driver
 nvidia-smi
 
-# 2. Reinstall PyTorch với CUDA
+# 2. Reinstall PyTorch with CUDA
 uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # 3. Verify
 uv run python -c "import torch; print(torch.cuda.is_available())"
 ```
 
-### Lỗi: `qwen-asr` không tìm thấy
+### Error: `qwen-asr` not found
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 ModuleNotFoundError: No module named 'qwen_asr'
 ```
 
-**Nguyên nhân:** Package name là `qwen-asr` không phải `qwen3-asr`
+**Cause:** Package name is `qwen-asr` not `qwen3-asr`
 
-**Giải pháp:**
+**Solution:**
 
 ```bash
-# Cài đúng package
+# Install correct package
 uv pip install qwen-asr[vllm]
 ```
 
 ---
 
-## 🚀 Runtime Issues
+## Runtime Issues
 
-### Lỗi: CUDA Out of Memory
+### Error: CUDA Out of Memory
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 CUDA out of memory. Tried to allocate 22.00 MiB. GPU 0 has a total capacity of 3.63 GiB...
 ```
 
-**Nguyên nhân:** Models chiếm quá nhiều VRAM
+**Cause:** Models consume too much VRAM
 
-**Giải pháp:**
+**Solution:**
 
-**Option 1: Giảm GPU allocation**
+**Option 1: Reduce GPU allocation**
 
 ```bash
 # .env
@@ -91,14 +91,14 @@ ASR_GPU_MEMORY=0.3
 TTS_GPU_MEMORY=0.3
 ```
 
-**Option 2: Tắt services không cần**
+**Option 2: Disable unnecessary services**
 
 ```bash
 # .env
-TTS_ENABLED=false  # Chỉ test ASR
+TTS_ENABLED=false  # Only test ASR
 ```
 
-**Option 3: Dùng CPU backend**
+**Option 3: Use CPU backend**
 
 ```bash
 # .env
@@ -113,23 +113,23 @@ import torch
 torch.cuda.empty_cache()
 ```
 
-**Option 5: Dùng gradient checkpointing**
+**Option 5: Use gradient checkpointing**
 
 ```bash
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ```
 
-### Lỗi: VAD detection failed - wrong sample count
+### Error: VAD detection failed - wrong sample count
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 ValueError: Provided number of samples is 2048 (Supported values: 256 for 8000 sample rate, 512 for 16000)
 ```
 
-**Nguyên nhân:** Audio chunk size không đúng 512 samples
+**Cause:** Audio chunk size is not 512 samples
 
-**Giải pháp:** ✅ **Đã fix** - VAD service tự động buffer:
+**Solution:** **Fixed** - VAD service automatically buffers:
 
 ```python
 # voice_agent/services/vad.py
@@ -138,86 +138,86 @@ class _VADIterator:
         self._buffer = b""  # Auto-buffer to 512 samples
 ```
 
-Nếu vẫn lỗi, check version:
+If still failing, check version:
 
 ```bash
 git pull  # Get latest fix
 ```
 
-### Lỗi: Web client buffer size invalid
+### Error: Web client buffer size invalid
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 BaseAudioContext.createScriptProcessor: 1600 is not a valid bufferSize
 ```
 
-**Nguyên nhân:** Buffer size phải là power of 2
+**Cause:** Buffer size must be a power of 2
 
-**Giải pháp:** ✅ **Đã fix** - Đổi sang 2048:
+**Solution:** **Fixed** - Changed to 2048:
 
 ```javascript
 // web_client/server.py line 504
 const bufferSize = 2048;  // Must be 1024, 2048, 4096, etc.
 ```
 
-### Lỗi: IndentationError
+### Error: IndentationError
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```python
 IndentationError: unexpected indent at line 263
 ```
 
-**Nguyên nhân:** Duplicate code hoặc tab/space mixing
+**Cause:** Duplicate code or tab/space mixing
 
-**Giải pháp:** ✅ **Đã fix**
+**Solution:** **Fixed**
 
 ```bash
 # Get latest version
 git pull
 ```
 
-Hoặc tự fix:
+Or fix manually:
 
 ```bash
 # Format code
 uv run black src/
 ```
 
-### Lỗi: `check_model_inputs()` missing argument
+### Error: `check_model_inputs()` missing argument
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 TypeError: check_model_inputs() missing 1 required positional argument: 'func'
 ```
 
-**Nguyên nhân:** Transformers version incompatible với qwen-asr
+**Cause:** Transformers version incompatible with qwen-asr
 
-**Giải pháp:**
+**Solution:**
 
 ```bash
 # Pin transformers version
 uv pip install transformers==4.57.6 --force-reinstall
 ```
 
-### Lỗi: WebSocket disconnect ngay lập tức
+### Error: WebSocket disconnects immediately
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 WebSocket connection failed
 Client disconnected
 ```
 
-**Nguyên nhân:**
+**Cause:**
 
-- Firewall block port
+- Firewall blocks port
 - CORS policy
-- Server chưa sẵn sàng
+- Server not ready
 
-**Giải pháp:**
+**Solution:**
 
 1. **Check server running:**
 
@@ -248,23 +248,23 @@ app.add_middleware(
 
 ---
 
-## 🎙️ Audio Quality Issues
+## Audio Quality Issues
 
-### Transcript rỗng hoặc sai
+### Transcript empty or incorrect
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```json
 {"type": "transcript", "text": ""}
 ```
 
-**Nguyên nhân:**
+**Cause:**
 
-- Audio quá ngắn
-- Noise quá nhiều
-- Sample rate sai
+- Audio too short
+- Too much noise
+- Wrong sample rate
 
-**Giải pháp:**
+**Solution:**
 
 1. **Enable preprocessing:**
 
@@ -286,7 +286,7 @@ const channels = 1;
 VAD_MIN_SILENCE_MS=500  # Wait longer for complete speech
 ```
 
-1. **Test với file audio:**
+1. **Test with audio file:**
 
 ```python
 # Test offline
@@ -309,15 +309,15 @@ asyncio.run(test())
 
 ### Audio output garbled/distorted
 
-**Triệu chứng:** TTS output không nghe được
+**Symptoms:** TTS output is inaudible
 
-**Nguyên nhân:**
+**Cause:**
 
 - Sample rate mismatch
-- Format sai
+- Wrong format
 - Normalization issue
 
-**Giải pháp:**
+**Solution:**
 
 1. **Check sample rates match:**
 
@@ -333,7 +333,7 @@ asyncio.run(test())
 output_audio = self._postprocessor.process(tts_result.audio)
 ```
 
-1. **Test TTS riêng:**
+1. **Test TTS separately:**
 
 ```python
 import asyncio
@@ -343,7 +343,7 @@ async def test():
     tts = TTSService()
     await tts.start()
     
-    result = await tts.synthesize("Xin chào")
+    result = await tts.synthesize("Hello")
     
     # Save and play
     with open('test_tts.pcm', 'wb') as f:
@@ -357,19 +357,19 @@ asyncio.run(test())
 
 ---
 
-## ⚡ Performance Issues
+## Performance Issues
 
-### Latency quá cao (> 3s)
+### Latency too high (> 3s)
 
-**Triệu chứng:** Response chậm
+**Symptoms:** Slow response
 
-**Nguyên nhân:**
+**Cause:**
 
-- Model chậm
-- Network to Groq chậm
+- Slow model
+- Slow network to Groq
 - Audio processing overhead
 
-**Giải pháp:**
+**Solution:**
 
 1. **Enable ASR streaming:**
 
@@ -377,7 +377,7 @@ asyncio.run(test())
 ASR_STREAMING=true
 ```
 
-1. **Use vLLM backend (if GPU ≥ 6GB):**
+1. **Use vLLM backend (if GPU >= 6GB):**
 
 ```bash
 ASR_BACKEND=vllm
@@ -410,15 +410,15 @@ uv run voice-agent 2>&1 | grep latency
 
 ### RTF > 1.0 (slower than real-time)
 
-**Triệu chứng:** ASR/TTS quá chậm
+**Symptoms:** ASR/TTS too slow
 
-**Nguyên nhân:**
+**Cause:**
 
 - CPU backend
 - GPU overloaded
 - Large batch size
 
-**Giải pháp:**
+**Solution:**
 
 1. **Ensure GPU is used:**
 
@@ -441,17 +441,17 @@ kill <PID>
 ASR_BACKEND=vllm
 ```
 
-### Server bị crash/hang
+### Server crashes/hangs
 
-**Triệu chứng:** Server không phản hồi
+**Symptoms:** Server not responding
 
-**Nguyên nhân:**
+**Cause:**
 
 - Deadlock
 - Memory leak
 - Uncaught exception
 
-**Giải pháp:**
+**Solution:**
 
 1. **Check logs:**
 
@@ -466,7 +466,7 @@ DEBUG=true
 LOG_LEVEL=DEBUG
 ```
 
-1. **Restart với clean state:**
+1. **Restart with clean state:**
 
 ```bash
 # Kill all processes
@@ -491,19 +491,19 @@ free -h
 
 ---
 
-## 🌐 Network Issues
+## Network Issues
 
 ### Groq API timeout
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 TimeoutError: Request to Groq API timed out
 ```
 
-**Nguyên nhân:** Network to Groq cloud chậm/down
+**Cause:** Network to Groq cloud slow/down
 
-**Giải pháp:**
+**Solution:**
 
 1. **Check Groq status:**
 
@@ -533,15 +533,15 @@ curl https://api.groq.com/openai/v1/models \
 
 ### Model download fails
 
-**Triệu chứng:**
+**Symptoms:**
 
 ```
 ConnectionError: Failed to download model from HuggingFace
 ```
 
-**Nguyên nhân:** Network issue or HF down
+**Cause:** Network issue or HF down
 
-**Giải pháp:**
+**Solution:**
 
 1. **Check HuggingFace status:**
 
@@ -565,7 +565,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 
 ---
 
-## 🔍 Debugging Tips
+## Debugging Tips
 
 ### Enable structured logging
 
@@ -613,19 +613,19 @@ print(torch.cuda.memory_summary())
 
 ---
 
-## 📞 Support
+## Support
 
-**Nếu vẫn gặp lỗi:**
+**If still encountering errors:**
 
-1. Check logs với `DEBUG=true`
-2. Search issues trong repo
-3. Create GitHub issue với:
+1. Check logs with `DEBUG=true`
+2. Search issues in the repo
+3. Create GitHub issue with:
    - Full error stack trace
    - Environment info (GPU, OS, Python version)
    - Config (.env)
    - Steps to reproduce
 
-**Thông tin hữu ích:**
+**Useful information:**
 
 ```bash
 # System info

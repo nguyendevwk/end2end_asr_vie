@@ -1,6 +1,6 @@
 # API Reference
 
-## 🌐 HTTP REST API
+## HTTP REST API
 
 Base URL: `http://localhost:8000`
 
@@ -78,7 +78,7 @@ curl http://localhost:8000/metrics | jq .
 
 ---
 
-## 🔌 WebSocket API
+## WebSocket API
 
 WebSocket endpoint for real-time voice conversation.
 
@@ -109,7 +109,7 @@ ws.onclose = () => {
 
 ### Message Types
 
-#### Client → Server
+#### Client -> Server
 
 ##### 1. Audio Data
 
@@ -157,7 +157,7 @@ ws.send(JSON.stringify({
 }
 ```
 
-#### Server → Client
+#### Server -> Client
 
 ##### 1. State Updates
 
@@ -196,7 +196,7 @@ ASR output.
 ```json
 {
   "type": "transcript",
-  "text": "xin chào",
+  "text": "xin chao",
   "confidence": 0.95,
   "language": "vi"
 }
@@ -305,7 +305,7 @@ if (message.type === 'error') {
 
 ---
 
-## 📊 Service APIs (Python)
+## Service APIs (Python)
 
 Internal service APIs for programmatic use.
 
@@ -414,7 +414,7 @@ llm = LLMService()
 await llm.start()
 
 # Streaming generation
-async for chunk in llm.generate_stream("Xin chào"):
+async for chunk in llm.generate_stream("Xin chao"):
     print(chunk, end='', flush=True)
 ```
 
@@ -453,7 +453,7 @@ tts = TTSService()
 await tts.start()
 
 # Synthesize speech
-result = await tts.synthesize("Xin chào, tôi là trợ lý AI")
+result = await tts.synthesize("Xin chao, toi la tro ly AI")
 
 # Save to file
 with open('output.pcm', 'wb') as f:
@@ -493,7 +493,7 @@ from voice_agent.services import Orchestrator
 orch = Orchestrator(session_id="user-123")
 await orch.start()
 
-# Process audio (full pipeline: VAD → ASR → LLM → TTS)
+# Process audio (full pipeline: VAD -> ASR -> LLM -> TTS)
 async for result in orch.process_audio(audio_chunk):
     if isinstance(result, str):
         print(f"Event: {result}")  # State updates, transcripts
@@ -526,7 +526,7 @@ Process audio through full pipeline.
 
 ---
 
-## 🔧 Configuration API
+## Configuration API
 
 Environment variables (`.env` file).
 
@@ -585,7 +585,7 @@ See [.env.example](../src/.env.example) for full reference.
 
 ---
 
-## 📚 Type Definitions
+## Type Definitions
 
 ### Audio Format
 
@@ -622,7 +622,7 @@ class ErrorCode(Enum):
 
 ---
 
-## 📖 Examples
+## Examples
 
 ### Full client example (JavaScript)
 

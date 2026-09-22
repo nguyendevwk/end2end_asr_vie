@@ -1,51 +1,51 @@
 # Vietnamese Voice Agent Documentation
 
-## 📚 Tài liệu hướng dẫn
+## Documentation Guide
 
-Hệ thống Voice Agent thế hệ mới cho tiếng Việt với kiến trúc tối ưu real-time.
+Next-generation Voice Agent system for Vietnamese with real-time optimized architecture.
 
-### Tài liệu chính
+### Main Documentation
 
-1. **[Kiến trúc hệ thống](ARCHITECTURE.md)** - Thiết kế tổng quan và luồng xử lý
-2. **[Hướng dẫn cài đặt](INSTALLATION.md)** - Cài đặt và cấu hình môi trường
-3. **[Hướng dẫn sử dụng](USAGE.md)** - Chạy và test hệ thống
-4. **[Tối ưu hóa hiệu năng](OPTIMIZATION.md)** - Các kỹ thuật tối ưu
-5. **[API Reference](API.md)** - Chi tiết API endpoints và WebSocket
+1. **[System Architecture](ARCHITECTURE.md)** - Overview design and processing pipeline
+2. **[Installation Guide](INSTALLATION.md)** - Installation and environment configuration
+3. **[Usage Guide](USAGE.md)** - Running and testing the system
+4. **[Performance Optimization](OPTIMIZATION.md)** - Optimization techniques
+5. **[API Reference](API.md)** - API endpoints and WebSocket details
 
-### Tài liệu kỹ thuật
+### Technical Documentation
 
-- **[qwenasr/README.md](qwenasr/README.md)** - Hướng dẫn Qwen3-ASR model
-- **[Troubleshooting](TROUBLESHOOTING.md)** - Xử lý lỗi thường gặp
+- **[qwenasr/README.md](qwenasr/README.md)** - Qwen3-ASR model guide
+- **[Troubleshooting](TROUBLESHOOTING.md)** - Common error handling
 
-## 🎯 Mục tiêu dự án
+## Project Goals
 
-Voice Agent demo cho phỏng vấn xin việc:
+An open-source, end-to-end Vietnamese voice agent for real-time speech-to-text and conversational AI.
 
-- ✅ **Clean code** - Dễ đọc, dễ mở rộng
-- ✅ **Real-time** - Latency < 2s end-to-end
-- ✅ **Lightweight** - Chạy trên GPU 4GB
-- ✅ **Production-ready** - Monitoring, logging, error handling đầy đủ
+- **Clean code** - Easy to read, easy to extend
+- **Real-time** - Latency < 2s end-to-end
+- **Lightweight** - Runs on 4GB GPU
+- **Production-ready** - Monitoring, logging, error handling included
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Clone và cài đặt
+# Clone and install
 cd src
 uv sync
 
-# Cấu hình
+# Configure
 cp .env.example .env
-# Chỉnh GROQ_API_KEY trong .env
+# Set GROQ_API_KEY in .env
 
-# Chạy server
+# Run server
 uv run voice-agent
 
-# Chạy web client (terminal khác)
+# Run web client (different terminal)
 uv run voice-agent-client
 ```
 
-## 📖 Đọc thêm
+## Further Reading
 
-- Xem [../src/README.md](../src/README.md) cho quick reference
-- Xem [ARCHITECTURE.md](ARCHITECTURE.md) để hiểu kiến trúc
-- Xem [OPTIMIZATION.md](OPTIMIZATION.md) để tối ưu hiệu năng
+- See [../src/README.md](../src/README.md) for quick reference
+- See [ARCHITECTURE.md](ARCHITECTURE.md) to understand the architecture
+- See [OPTIMIZATION.md](OPTIMIZATION.md) to optimize performance

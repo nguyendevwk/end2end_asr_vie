@@ -1,16 +1,16 @@
-# Tối ưu hóa hiệu năng
+# Performance Optimization
 
-## 🎯 Mục tiêu Performance
+## Performance Goals
 
-| Metric | Target | Thực tế (GTX 1650 Ti 4GB) |
+| Metric | Target | Actual (GTX 1650 Ti 4GB) |
 |--------|--------|---------------------------|
-| E2E Latency | < 2s | 1.2-1.8s ✅ |
-| ASR RTF | < 0.3 | 0.15-0.25 ✅ |
-| TTS RTF | < 0.2 | 0.10-0.15 ✅ |
-| VRAM Usage | ≤ 4GB | 3.5-4.0GB ✅ |
-| Concurrent Users | 1-2 | 1-2 ✅ |
+| E2E Latency | < 2s | 1.2-1.8s |
+| ASR RTF | < 0.3 | 0.15-0.25 |
+| TTS RTF | < 0.2 | 0.10-0.15 |
+| VRAM Usage | ≤ 4GB | 3.5-4.0GB |
+| Concurrent Users | 1-2 | 1-2 |
 
-## ⚡ Optimization Techniques
+## Optimization Techniques
 
 ### 1. ASR Optimization
 
@@ -18,29 +18,29 @@
 
 **Transformers (default):**
 
-- ✅ VRAM: 2.5-3GB
-- ✅ Stable, compatible
-- ❌ RTF: 0.20-0.25
+- VRAM: 2.5-3GB
+- Stable, compatible
+- RTF: 0.20-0.25
 - **Best for:** GPU 4GB, stable deployment
 
 **vLLM:**
 
-- ✅ RTF: 0.08-0.12 (2-3x faster)
-- ✅ Better batching
-- ❌ VRAM: 5-6GB
+- RTF: 0.08-0.12 (2-3x faster)
+- Better batching
+- VRAM: 5-6GB
 - **Best for:** GPU 6GB+, high throughput
 
-**Cấu hình:**
+**Configuration:**
 
 ```bash
 # .env
-ASR_BACKEND=transformers  # Cho GPU nhỏ
+ASR_BACKEND=transformers  # For small GPUs
 ASR_GPU_MEMORY=0.4        # Limit VRAM usage
 ```
 
 #### B. Preprocessing
 
-Bật preprocessing để tăng accuracy +4-8%:
+Enable preprocessing to improve accuracy +4-8%:
 
 ```bash
 ASR_PREPROCESS=true
@@ -55,30 +55,30 @@ ASR_PREPROCESS=true
 
 **Trade-off:**
 
-- ✅ Accuracy: +4-8% (đặc biệt với audio chất lượng thấp)
-- ❌ Latency: +10-20ms
-- **Recommendation:** Bật cho production
+- Accuracy: +4-8% (especially with low-quality audio)
+- Latency: +10-20ms
+- **Recommendation:** Enable for production
 
 #### C. Streaming ASR
 
-Giảm Time-to-First-Audio (TTFA) cho audio dài:
+Reduce Time-to-First-Audio (TTFA) for long audio:
 
 ```bash
 ASR_STREAMING=true
 ```
 
-**Hoạt động:**
+**How it works:**
 
-- Auto-enable cho audio > 2s
-- Chia thành chunks 2s
-- Transcribe parallel
+- Auto-enable for audio > 2s
+- Split into 2s chunks
+- Transcribe in parallel
 - Join results
 
 **Performance:**
 
 - Non-streaming: 800-1000ms TTFA
 - Streaming: 400-600ms TTFA
-- **Recommendation:** Bật cho conversations
+- **Recommendation:** Enable for conversations
 
 ### 2. VAD Optimization
 
@@ -90,9 +90,9 @@ VAD_THRESHOLD=0.5  # Default: balanced
 
 **Tuning guide:**
 
-- `0.3`: Nhạy hơn → nhiều noise → nhiều false positives
+- `0.3`: More sensitive → more noise → more false positives
 - `0.5`: Balanced (recommended)
-- `0.7`: Ít nhạy → chỉ speech rõ → có thể miss soft speech
+- `0.7`: Less sensitive → only clear speech → may miss soft speech
 
 #### B. Silence Detection
 
@@ -102,13 +102,13 @@ VAD_MIN_SILENCE_MS=300  # Default
 
 **Trade-off:**
 
-- `200ms`: Nhanh hơn, nhưng dễ cut mid-sentence
+- `200ms`: Faster, but may cut mid-sentence
 - `300ms`: Balanced (recommended)
-- `500ms`: Chờ lâu hơn, đảm bảo câu hoàn chỉnh
+- `500ms`: Wait longer, ensures complete sentences
 
 #### C. Buffer Management
 
-VAD tự động buffer để xử lý 512-sample chunks:
+VAD automatically buffers to process 512-sample chunks:
 
 ```python
 # voice_agent/services/vad.py
@@ -117,7 +117,7 @@ class _VADIterator:
         self._buffer = b""  # Internal buffer
 ```
 
-**No user config needed** - tự động optimize.
+**No user config needed** - automatically optimized.
 
 ### 3. LLM Optimization
 
@@ -131,9 +131,9 @@ GROQ_MODEL=llama-3.3-70b-versatile  # Default: balanced
 
 | Model | Speed | Quality | Context |
 |-------|-------|---------|---------|
-| llama-3.1-8b-instant | ⚡⚡⚡ | ⭐⭐ | 8K |
-| llama-3.3-70b-versatile | ⚡⚡ | ⭐⭐⭐ | 32K |
-| mixtral-8x7b-32768 | ⚡⚡ | ⭐⭐⭐ | 32K |
+| llama-3.1-8b-instant | Fast | Medium | 8K |
+| llama-3.3-70b-versatile | Medium | High | 32K |
+| mixtral-8x7b-32768 | Medium | High | 32K |
 
 **Recommendation:** llama-3.3-70b-versatile (best balance)
 
@@ -143,7 +143,7 @@ GROQ_MODEL=llama-3.3-70b-versatile  # Default: balanced
 # Enabled by default
 ```
 
-Groq API streaming giảm latency:
+Groq API streaming reduces latency:
 
 - Non-streaming: 800-1200ms
 - Streaming: 400-800ms (first token)
@@ -196,18 +196,18 @@ TTS_SPEED=1.0  # Normal speed
 
 **Tuning:**
 
-- `0.8`: Slower, clearer (cho elderly users)
+- `0.8`: Slower, clearer (for elderly users)
 - `1.0`: Normal (recommended)
-- `1.2`: Faster (cho power users)
+- `1.2`: Faster (for power users)
 
 ### 5. Pipeline Optimization
 
 #### A. Service Isolation
 
-Test từng service riêng để debug bottlenecks:
+Test each service individually to debug bottlenecks:
 
 ```bash
-# Test latency của ASR only
+# Test ASR latency only
 VAD_ENABLED=true
 ASR_ENABLED=true
 LLM_ENABLED=false
@@ -216,7 +216,7 @@ TTS_ENABLED=false
 
 #### B. Concurrent Processing
 
-Pipeline tự động:
+Pipeline is automatic:
 
 - VAD → ASR: sequential
 - ASR → LLM: sequential  
@@ -246,7 +246,7 @@ const bufferSize = 2048;  // Must be power of 2
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ```
 
-Giảm fragmentation, giúp tránh OOM.
+Reduces fragmentation, helps avoid OOM.
 
 #### B. Python GC
 
@@ -259,16 +259,16 @@ gc.set_threshold(700, 10, 10)  # More aggressive GC
 #### C. Uvicorn Workers
 
 ```bash
-# Single worker (default) - cho GPU
+# Single worker (default) - for GPU
 uv run voice-agent
 
-# Multiple workers - CHỈ cho CPU-only
-uv run voice-agent --workers 4  # ⚠️ Multiple GPUs needed
+# Multiple workers - ONLY for CPU-only
+uv run voice-agent --workers 4  # Multiple GPUs needed
 ```
 
-**⚠️ Warning:** Multiple workers cần multiple GPUs (1 GPU/worker).
+**Warning:** Multiple workers require multiple GPUs (1 GPU/worker).
 
-## 📊 Benchmarking
+## Benchmarking
 
 ### Latency Breakdown Script
 
@@ -323,7 +323,7 @@ Total latency: 1124.8ms
   TTS: 286.9ms (RTF: 0.11)
 ```
 
-## 🎛️ Configuration Presets
+## Configuration Presets
 
 ### Preset 1: Low-Latency (GPU 6GB+)
 
@@ -404,9 +404,9 @@ LLM_ENABLED=true  # Groq is cloud-based (OK)
 TTS_DEVICE=cpu
 ```
 
-**⚠️ Warning:** CPU ASR/TTS rất chậm (RTF > 1.0), không real-time.
+**Warning:** CPU ASR/TTS is very slow (RTF > 1.0), not real-time.
 
-## 🔍 Profiling & Debugging
+## Profiling & Debugging
 
 ### Enable Profiling
 
@@ -430,7 +430,7 @@ torch.cuda.empty_cache()
 
 ### Latency Profiling
 
-Sử dụng `Timer` utility:
+Use the `Timer` utility:
 
 ```python
 from voice_agent.utils.monitor import Timer
@@ -441,7 +441,7 @@ with Timer() as t:
 print(f"Elapsed: {t.elapsed_ms:.1f}ms")
 ```
 
-## 📈 Scaling
+## Scaling
 
 ### Horizontal Scaling (Multiple Servers)
 
@@ -470,14 +470,14 @@ TTS_GPU_MEMORY=0.7
 # Can run multiple concurrent sessions
 ```
 
-## 📚 References
+## References
 
 - [PyTorch Performance Tuning](https://pytorch.org/tutorials/recipes/recipes/tuning_guide.html)
 - [VLLM Documentation](https://docs.vllm.ai/)
 - [Groq Cloud Speed](https://groq.com/)
 - [Audio Preprocessing Best Practices](https://www.audiokinetic.com/)
 
-## ✅ Optimization Checklist
+## Optimization Checklist
 
 - [ ] Choose ASR backend (transformers vs vLLM) based on GPU
 - [ ] Enable ASR streaming for conversations
@@ -490,7 +490,7 @@ TTS_GPU_MEMORY=0.7
 - [ ] Test service isolation for debugging
 - [ ] Document your production config
 
-## 🎯 Next Steps
+## Next Steps
 
 - Implement caching for repeated queries
 - Add batch processing for multiple users

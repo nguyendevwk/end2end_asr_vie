@@ -1,39 +1,39 @@
-# Hướng dẫn cài đặt
+# Installation Guide
 
-## 📋 Yêu cầu hệ thống
+## System Requirements
 
-### Phần cứng
+### Hardware
 
-**Tối thiểu:**
+**Minimum:**
 
 - CPU: 4 cores
 - RAM: 8GB
 - GPU: 4GB VRAM (NVIDIA)
 - Disk: 10GB free
 
-**Khuyến nghị:**
+**Recommended:**
 
 - CPU: 6+ cores
 - RAM: 16GB
 - GPU: 6GB+ VRAM (NVIDIA RTX)
 - Disk: 20GB SSD
 
-### Phần mềm
+### Software
 
 - **OS:** Linux (Ubuntu 20.04+) / macOS (CPU only)
 - **Python:** 3.12.x
-- **CUDA:** 11.8+ (cho GPU)
+- **CUDA:** 11.8+ (for GPU)
 - **Git:** 2.0+
 
-## 🚀 Cài đặt
+## Installation
 
-### 1. Cài đặt UV (Python package manager)
+### 1. Install UV (Python package manager)
 
 ```bash
 # Linux/macOS
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Hoặc dùng pip
+# Or use pip
 pip install uv
 ```
 
@@ -44,29 +44,29 @@ git clone <repository-url>
 cd end2end_asr_vie/src
 ```
 
-### 3. Cài đặt dependencies
+### 3. Install dependencies
 
 ```bash
-# Tự động tạo venv và cài packages
+# Automatically create venv and install packages
 uv sync
 
-# Hoặc với extras (nếu cần vLLM backend)
+# Or with extras (if vLLM backend is needed)
 uv sync --extra vllm
 ```
 
-**Lưu ý về dependencies:**
+**Notes on dependencies:**
 
-- `transformers==4.57.6` - Đã pin để tương thích qwen-asr/qwen-tts
+- `transformers==4.57.6` - Pinned for compatibility with qwen-asr/qwen-tts
 - `qwen-asr[vllm]<=0.0.6` - ASR model
 - `qwen-tts>=0.1.1` - TTS model
-- `torch>=2.0.0` - PyTorch với CUDA support
+- `torch>=2.0.0` - PyTorch with CUDA support
 
-### 4. Tải models
+### 4. Download models
 
-Models sẽ tự động download lần đầu chạy, nhưng bạn có thể tải trước:
+Models will be automatically downloaded on first run, but you can download them beforehand:
 
 ```bash
-# Kích hoạt venv
+# Activate venv
 source .venv/bin/activate
 
 # Download models
@@ -81,43 +81,43 @@ Qwen3ASRModel.from_pretrained('Qwen/Qwen3-ASR-0.6B')
 AutoModel.from_pretrained('g-group-ai-lab/gwen-tts-0.6B')
 "
 
-# VAD model (tự động download khi chạy, ~1.5MB)
+# VAD model (auto-downloaded when running, ~1.5MB)
 ```
 
-**Vị trí lưu models:**
+**Model storage locations:**
 
 ```
 ~/.cache/huggingface/hub/          # Transformers models
 ~/.cache/torch/hub/                # Silero VAD
 ```
 
-Hoặc tự chỉ định thư mục:
+Or specify a custom directory:
 
 ```bash
-# Download vào thư mục cục bộ
+# Download to a local directory
 mkdir -p models/{asr,tts,vad}
 
-# Xem hướng dẫn chi tiết trong models/README.md
+# See detailed instructions in models/README.md
 ```
 
-### 5. Cấu hình
+### 5. Configuration
 
 ```bash
-# Copy file mẫu
+# Copy example file
 cp .env.example .env
 
-# Chỉnh sửa cấu hình
+# Edit configuration
 nano .env
 ```
 
-**Cấu hình tối thiểu:**
+**Minimum configuration:**
 
 ```bash
 # .env
-GROQ_API_KEY=gsk_xxx...  # Lấy từ https://console.groq.com/
+GROQ_API_KEY=gsk_xxx...  # Get from https://console.groq.com/
 ```
 
-**Cấu hình GPU nhỏ (4GB VRAM):**
+**Small GPU configuration (4GB VRAM):**
 
 ```bash
 # .env
@@ -125,11 +125,11 @@ ASR_BACKEND=transformers
 ASR_GPU_MEMORY=0.3
 TTS_GPU_MEMORY=0.4
 
-# Hoặc tắt TTS nếu cần
+# Or disable TTS if needed
 TTS_ENABLED=false
 ```
 
-## ✅ Kiểm tra cài đặt
+## Verify Installation
 
 ### Test import
 
@@ -137,7 +137,7 @@ TTS_ENABLED=false
 uv run python -c "
 from voice_agent import __version__
 from voice_agent.services import VADService, ASRService, TTSService
-print(f'✅ Voice Agent v{__version__} installed successfully')
+print(f'Voice Agent v{__version__} installed successfully')
 "
 ```
 
@@ -172,35 +172,35 @@ from voice_agent.services import VADService
 async def test():
     vad = VADService()
     await vad.start()
-    print('✅ VAD loaded')
+    print('VAD loaded')
 
 asyncio.run(test())
 "
 ```
 
-## 🐛 Xử lý lỗi cài đặt
+## Installation Troubleshooting
 
-### Lỗi: `No solution found when resolving dependencies`
+### Error: `No solution found when resolving dependencies`
 
-**Nguyên nhân:** Conflict giữa qwen-asr và qwen-tts về transformers version
+**Cause:** Conflict between qwen-asr and qwen-tts regarding transformers version
 
-**Giải pháp:**
+**Solution:**
 
 ```bash
-# Xóa lock file
+# Delete lock file
 rm uv.lock
 
-# Cài lại
+# Reinstall
 uv sync
 ```
 
-### Lỗi: `CUDA out of memory`
+### Error: `CUDA out of memory`
 
-**Nguyên nhân:** GPU không đủ VRAM
+**Cause:** GPU does not have enough VRAM
 
-**Giải pháp:**
+**Solution:**
 
-1. Giảm GPU memory allocation:
+1. Reduce GPU memory allocation:
 
 ```bash
 # .env
@@ -208,7 +208,7 @@ ASR_GPU_MEMORY=0.2
 TTS_GPU_MEMORY=0.3
 ```
 
-1. Dùng CPU backend:
+2. Use CPU backend:
 
 ```bash
 # .env
@@ -216,56 +216,56 @@ ASR_DEVICE=cpu
 TTS_DEVICE=cpu
 ```
 
-1. Tắt services không cần:
+3. Disable unnecessary services:
 
 ```bash
 # .env
-TTS_ENABLED=false  # Chỉ test ASR
+TTS_ENABLED=false  # Only test ASR
 ```
 
-### Lỗi: `flash-attn not installed`
+### Error: `flash-attn not installed`
 
-**Nguyên nhân:** Flash Attention chưa cài (optional optimization)
+**Cause:** Flash Attention is not installed (optional optimization)
 
-**Giải pháp:**
+**Solution:**
 
-Có thể ignore (hệ thống tự fallback sang PyTorch implementation):
+You can ignore it (the system will automatically fall back to the PyTorch implementation):
 
 ```
 Warning: flash-attn is not installed. Will only run the manual PyTorch version.
 ```
 
-Hoặc cài flash-attn (cần GPU compute capability >= 8.0):
+Or install flash-attn (requires GPU compute capability >= 8.0):
 
 ```bash
 uv pip install flash-attn --no-build-isolation
 ```
 
-### Lỗi: `transformers compatibility`
+### Error: `transformers compatibility`
 
-**Nguyên nhân:** Sai version transformers
+**Cause:** Wrong transformers version
 
-**Giải pháp:**
+**Solution:**
 
 ```bash
-# Force cài đúng version
+# Force install the correct version
 uv pip install transformers==4.57.6 --force-reinstall
 ```
 
-## 🔧 Cài đặt nâng cao
+## Advanced Installation
 
-### Dùng vLLM backend (faster ASR)
+### Using vLLM backend (faster ASR)
 
-**Yêu cầu:** GPU 6GB+ VRAM
+**Requirements:** GPU 6GB+ VRAM
 
 ```bash
-# Cài vLLM
+# Install vLLM
 uv sync --extra vllm
 
-# Hoặc
+# Or
 uv pip install vllm
 
-# Cấu hình
+# Configure
 echo "ASR_BACKEND=vllm" >> .env
 ```
 
@@ -280,16 +280,16 @@ TTS_MODEL=/path/to/gwen-tts
 ### Development setup
 
 ```bash
-# Cài dev dependencies
+# Install dev dependencies
 uv pip install -e ".[dev]"
 
-# Hoặc
+# Or
 uv sync --extra dev
 
-# Bao gồm: pytest, black, ruff, mypy
+# Includes: pytest, black, ruff, mypy
 ```
 
-## 📦 Cấu trúc thư mục sau cài đặt
+## Directory Structure After Installation
 
 ```
 src/
@@ -304,49 +304,49 @@ src/
     └── vad/
 ```
 
-## ▶️ Chạy server
+## Run Server
 
-Sau khi cài đặt xong:
+After installation is complete:
 
 ```bash
-# Chạy voice agent server
+# Run voice agent server
 uv run voice-agent
 
-# Mở terminal khác, chạy web client
+# Open another terminal and run web client
 uv run voice-agent-client
 
-# Truy cập http://localhost:8080
+# Access http://localhost:8080
 ```
 
-## 🔄 Cập nhật
+## Update
 
 ```bash
-# Pull code mới
+# Pull new code
 git pull
 
-# Cập nhật dependencies
+# Update dependencies
 uv sync
 
 # Restart server
 ```
 
-## 🗑️ Gỡ cài đặt
+## Uninstall
 
 ```bash
-# Xóa virtual environment
+# Delete virtual environment
 rm -rf .venv
 
-# Xóa cache models (optional)
+# Delete model cache (optional)
 rm -rf ~/.cache/huggingface
 rm -rf ~/.cache/torch
 
-# Xóa source code
+# Delete source code
 cd ..
 rm -rf end2end_asr_vie
 ```
 
-## 📚 Tiếp theo
+## Next Steps
 
-- Đọc [USAGE.md](USAGE.md) để học cách sử dụng
-- Đọc [OPTIMIZATION.md](OPTIMIZATION.md) để tối ưu hiệu năng
-- Xem [TROUBLESHOOTING.md](TROUBLESHOOTING.md) nếu gặp lỗi
+- Read [USAGE.md](USAGE.md) to learn how to use
+- Read [OPTIMIZATION.md](OPTIMIZATION.md) to optimize performance
+- See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) if you encounter errors

@@ -1,52 +1,52 @@
-# Hướng dẫn sử dụng
+# User Guide
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Chạy server
+### 1. Run the server
 
 ```bash
 cd src
 uv run voice-agent
 ```
 
-Server khởi động tại `http://0.0.0.0:8000`
+Server starts at `http://0.0.0.0:8000`
 
-**Logs khi khởi động thành công:**
+**Logs on successful startup:**
 
 ```
-🚀 starting_voice_agent    version=0.1.0 host=0.0.0.0 port=8000
-📦 loading_vad_model       model='Silero VAD v5'
-🎙️ loading_asr_model      model=Qwen/Qwen3-ASR-0.6B
-🗣️ loading_llm_service    model=llama-3.3-70b-versatile
-🔊 loading_tts_model       model=g-group-ai-lab/gwen-tts-0.6B
-✅ voice_agent_ready       latency_target_ms=2000
+starting_voice_agent    version=0.1.0 host=0.0.0.0 port=8000
+loading_vad_model       model='Silero VAD v5'
+loading_asr_model      model=Qwen/Qwen3-ASR-0.6B
+loading_llm_service    model=llama-3.3-70b-versatile
+loading_tts_model       model=g-group-ai-lab/gwen-tts-0.6B
+voice_agent_ready       latency_target_ms=2000
 ```
 
-### 2. Chạy web client (terminal mới)
+### 2. Run the web client (new terminal)
 
 ```bash
 cd src
 uv run voice-agent-client
 ```
 
-Hoặc chỉ định port khác:
+Or specify a different port:
 
 ```bash
 uv run voice-agent-client --port 8080
 ```
 
-### 3. Truy cập web interface
+### 3. Access the web interface
 
-Mở browser: `http://localhost:8080`
+Open browser: `http://localhost:8080`
 
 ### 4. Test voice conversation
 
 1. Click **"Start Listening"**
-2. Nói vào microphone: *"Xin chào"*
-3. Chờ response (1-2 giây)
-4. Nghe audio response
+2. Speak into the microphone: *"Xin chao"*
+3. Wait for response (1-2 seconds)
+4. Listen to the audio response
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### HTTP REST API
 
@@ -102,13 +102,13 @@ Response:
 
 ### WebSocket API
 
-#### Kết nối
+#### Connection
 
 ```javascript
 const ws = new WebSocket('ws://localhost:8000/ws');
 ```
 
-#### Gửi audio
+#### Sending audio
 
 ```javascript
 // PCM 16kHz mono, 16-bit
@@ -120,7 +120,7 @@ ws.send(JSON.stringify({
 }));
 ```
 
-#### Nhận messages
+#### Receiving messages
 
 **State updates:**
 
@@ -136,7 +136,7 @@ ws.send(JSON.stringify({
 ```json
 {
   "type": "transcript",
-  "text": "xin chào",
+  "text": "xin chao",
   "confidence": 0.95
 }
 ```
@@ -161,9 +161,9 @@ ws.send(JSON.stringify({
 }
 ```
 
-## 🧪 Testing từng service
+## Testing Individual Services
 
-### Test riêng VAD
+### Test VAD alone
 
 ```bash
 # .env
@@ -177,7 +177,7 @@ TTS_ENABLED=false
 uv run voice-agent
 ```
 
-VAD sẽ chỉ detect speech và log, không transcribe.
+VAD will only detect speech and log, without transcribing.
 
 ### Test VAD + ASR
 
@@ -189,9 +189,9 @@ LLM_ENABLED=false
 TTS_ENABLED=false
 ```
 
-Hệ thống sẽ transcribe nhưng không gọi LLM/TTS.
+The system will transcribe but will not call LLM/TTS.
 
-### Test full pipeline (mặc định)
+### Test full pipeline (default)
 
 ```bash
 # .env
@@ -201,9 +201,9 @@ LLM_ENABLED=true
 TTS_ENABLED=true
 ```
 
-## 🛠️ Cấu hình nâng cao
+## Advanced Configuration
 
-### Tùy chỉnh VAD sensitivity
+### Customize VAD sensitivity
 
 ```bash
 # .env
@@ -212,19 +212,19 @@ VAD_MIN_SILENCE_MS=300     # Silence duration to end speech (default: 300)
 VAD_SPEECH_PAD_MS=300      # Padding before/after speech (default: 300)
 ```
 
-**Thử nghiệm:**
+**Experiments:**
 
-- `VAD_THRESHOLD=0.3` → Nhạy hơn (phát hiện nhiều noise)
-- `VAD_THRESHOLD=0.7` → Ít nhạy hơn (chỉ detect giọng rõ)
+- `VAD_THRESHOLD=0.3` -> More sensitive (detects more noise)
+- `VAD_THRESHOLD=0.7` -> Less sensitive (only detects clear voice)
 
-### Tùy chỉnh ASR
+### Customize ASR
 
 ```bash
 # .env
-ASR_BACKEND=transformers   # hoặc 'vllm'
+ASR_BACKEND=transformers   # or 'vllm'
 ASR_GPU_MEMORY=0.5         # 0.0-0.9
-ASR_PREPROCESS=true        # Bật preprocessing
-ASR_STREAMING=true         # Bật streaming cho audio >2s
+ASR_PREPROCESS=true        # Enable preprocessing
+ASR_STREAMING=true         # Enable streaming for audio >2s
 ```
 
 **Backend comparison:**
@@ -234,7 +234,7 @@ ASR_STREAMING=true         # Bật streaming cho audio >2s
 | transformers   | 3GB  | 0.20 | 600ms   | Good    |
 | vllm           | 6GB  | 0.08 | 250ms   | Good    |
 
-### Tùy chỉnh LLM
+### Customize LLM
 
 ```bash
 # .env
@@ -249,7 +249,7 @@ GROQ_MAX_TOKENS=150        # Response length
 - `mixtral-8x7b-32768` - Longer context
 - `llama-3.1-8b-instant` - Faster, lower quality
 
-### Tùy chỉnh TTS
+### Customize TTS
 
 ```bash
 # .env
@@ -258,9 +258,9 @@ TTS_SPEED=1.0              # Speaking speed (0.5-2.0)
 TTS_GPU_MEMORY=0.4
 ```
 
-## 📊 Monitoring & Logging
+## Monitoring & Logging
 
-### Xem logs real-time
+### View real-time logs
 
 ```bash
 # Structured JSON logs
@@ -290,7 +290,7 @@ Debug mode logs:
 
 ### Performance metrics
 
-Metrics được log sau mỗi request:
+Metrics are logged after each request:
 
 ```json
 {
@@ -308,9 +308,9 @@ Metrics được log sau mỗi request:
 }
 ```
 
-## 🔍 Debugging
+## Debugging
 
-### Test ASR với file audio
+### Test ASR with an audio file
 
 ```python
 import asyncio
@@ -341,7 +341,7 @@ async def test_tts():
     tts = TTSService()
     await tts.start()
     
-    result = await tts.synthesize("Xin chào, tôi là trợ lý AI")
+    result = await tts.synthesize("Xin chao, toi la tro ly AI")
     
     # Save to file
     with open('output.pcm', 'wb') as f:
@@ -362,7 +362,7 @@ async def test_vad():
     vad = VADService()
     await vad.start()
     
-    # Test với audio chunk (512 samples = 32ms @ 16kHz)
+    # Test with an audio chunk (512 samples = 32ms @ 16kHz)
     import numpy as np
     audio_chunk = np.random.randn(512).astype(np.float32).tobytes()
     
@@ -372,11 +372,11 @@ async def test_vad():
 asyncio.run(test_vad())
 ```
 
-## 🎯 Use Cases
+## Use Cases
 
 ### 1. Voice Chatbot
 
-Full pipeline với tất cả services enabled.
+Full pipeline with all services enabled.
 
 ### 2. Transcription Service
 
@@ -387,7 +387,7 @@ LLM_ENABLED=false
 TTS_ENABLED=false
 ```
 
-Chỉ convert speech → text.
+Only converts speech -> text.
 
 ### 3. Text-to-Speech Service
 
@@ -398,18 +398,18 @@ LLM_ENABLED=false
 TTS_ENABLED=true
 ```
 
-HTTP endpoint cho TTS:
+HTTP endpoint for TTS:
 
 ```python
 POST /tts
 {
-  "text": "Xin chào"
+  "text": "Xin chao"
 }
 ```
 
-## ⚡ Performance Tips
+## Performance Tips
 
-### Giảm latency
+### Reduce latency
 
 1. **Enable ASR streaming:**
 
@@ -417,21 +417,21 @@ POST /tts
 ASR_STREAMING=true
 ```
 
-1. **Dùng vLLM backend:**
+1. **Use the vLLM backend:**
 
 ```bash
 ASR_BACKEND=vllm
 ```
 
-1. **Giảm VAD sensitivity:**
+1. **Reduce VAD sensitivity:**
 
 ```bash
-VAD_MIN_SILENCE_MS=200  # Kết thúc speech nhanh hơn
+VAD_MIN_SILENCE_MS=200  # End speech faster
 ```
 
-### Giảm memory usage
+### Reduce memory usage
 
-1. **Giảm GPU allocation:**
+1. **Reduce GPU allocation:**
 
 ```bash
 ASR_GPU_MEMORY=0.3
@@ -444,16 +444,16 @@ TTS_GPU_MEMORY=0.3
 ASR_PREPROCESS=false
 ```
 
-1. **Dùng CPU cho VAD/LLM:**
+1. **Use CPU for VAD/LLM:**
 
 ```bash
 VAD_DEVICE=cpu
-LLM_ENABLED=false  # Hoặc dùng smaller model
+LLM_ENABLED=false  # Or use a smaller model
 ```
 
-## 📚 Ví dụ Integration
+## Integration Examples
 
-### Dùng trong Python app
+### Using in a Python app
 
 ```python
 from voice_agent.services import Orchestrator
@@ -463,10 +463,10 @@ async def main():
     orch = Orchestrator(session_id="my-session")
     await orch.start()
     
-    # Nhận audio từ nguồn nào đó
+    # Receive audio from some source
     audio_data = ...
     
-    # Xử lý
+    # Process
     async for result in orch.process_audio(audio_data):
         if isinstance(result, str):
             print(f"Event: {result}")
@@ -476,30 +476,30 @@ async def main():
 asyncio.run(main())
 ```
 
-### Dùng với curl
+### Using with curl
 
 ```bash
 # Test health
 curl http://localhost:8000/health
 
-# WebSocket (cần wscat)
+# WebSocket (requires wscat)
 npm install -g wscat
 wscat -c ws://localhost:8000/ws
 ```
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
-Xem [TROUBLESHOOTING.md](TROUBLESHOOTING.md) cho chi tiết.
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for details.
 
-**Lỗi thường gặp:**
+**Common errors:**
 
 - **WebSocket disconnect:** Check firewall, CORS settings
-- **CUDA OOM:** Giảm GPU_MEMORY, disable services
+- **CUDA OOM:** Reduce GPU_MEMORY, disable services
 - **Slow latency:** Enable streaming, check network to Groq
 - **Audio garbled:** Check sample rate, format matching
 
-## 📖 Next Steps
+## Next Steps
 
-- Tối ưu performance: [OPTIMIZATION.md](OPTIMIZATION.md)
+- Optimize performance: [OPTIMIZATION.md](OPTIMIZATION.md)
 - API reference: [API.md](API.md)
-- Kiến trúc chi tiết: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Detailed architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
