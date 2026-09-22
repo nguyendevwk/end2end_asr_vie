@@ -1,12 +1,25 @@
 [project]
 name = "voice-agent"
 version = "0.1.0"
-description = "🎤 Real-time Vietnamese Voice Agent - ASR + LLM + TTS Pipeline"
+description = "Real-time Vietnamese Voice Agent — ASR + LLM + TTS Pipeline"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-authors = [{ name = "Developer" }]
-keywords = ["voice-agent", "asr", "tts", "vietnamese", "real-time", "ai"]
+authors = [{ name = "nguyendevwk", email = "phamnguyen.devwk@gmail.com" }]
+keywords = ["voice-agent", "asr", "tts", "vietnamese", "real-time", "ai", "speech", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+homepage = "https://github.com/nguyendevwk/end2end_asr_vie"
+repository = "https://github.com/nguyendevwk/end2end_asr_vie"
+documentation = "https://github.com/nguyendevwk/end2end_asr_vie/tree/main/docs"
 
 dependencies = [
     # ═══════════════════════════════════════════════════════════════════════════

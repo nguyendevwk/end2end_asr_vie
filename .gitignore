@@ -52,3 +52,12 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# Ruff
+.ruff_cache/
+
+# mypy
+.mypy_cache/
+
+# Docker
+docker-compose.override.yml

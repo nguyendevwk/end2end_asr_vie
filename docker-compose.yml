@@ -1,0 +1,35 @@
+services:
+  voice-agent:
+    build: .
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+    env_file:
+      - src/.env
+    volumes:
+      - ./src/models:/app/src/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+
+  web-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    ports:
+      - "8080:8080"
+    depends_on:
+      voice-agent:
+        condition: service_healthy
+    restart: unless-stopped

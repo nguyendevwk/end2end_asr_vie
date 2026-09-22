@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY src/web_client/ ./web_client/
+COPY src/pyproject.toml ./
+
+RUN pip install flask
+
+EXPOSE 8080
+
+CMD ["python", "-m", "web_client.server"]

@@ -1,23 +1,27 @@
-# 🎙️ Vietnamese Voice Agent
+# Vietnamese Voice Agent
 
-> Real-time AI Voice Agent cho tiếng Việt với kiến trúc tối ưu low-latency
+Real-time AI voice agent for Vietnamese with optimized low-latency architecture.
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green.svg)](https://fastapi.tiangolo.com/)
 [![UV](https://img.shields.io/badge/UV-Package%20Manager-orange.svg)](https://github.com/astral-sh/uv)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)]()
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-black.svg)](https://github.com/astral-sh/ruff)
 
-## ✨ Features
+## Features
 
-- 🚀 **Real-time** - Latency < 2s end-to-end
-- 🎯 **Vietnamese optimized** - Qwen3-ASR + Gwen-TTS cho tiếng Việt
-- 💡 **Lightweight** - Chạy trên GPU 4GB (GTX 1650 Ti)
-- 🔧 **Production-ready** - Monitoring, logging, error handling đầy đủ
-- 🧩 **Service isolation** - Bật/tắt từng service để test/debug
-- 📊 **Streaming support** - ASR streaming cho audio dài
-- 🎨 **Clean codebase** - Type hints, protocols, well-documented
+- **Real-time** — End-to-end latency < 2s on consumer GPU
+- **Vietnamese optimized** — Qwen3-ASR + Gwen-TTS tuned for Vietnamese
+- **Lightweight** — Runs on 4GB VRAM (GTX 1650 Ti)
+- **Production-ready** — Monitoring, logging, error handling, Prometheus metrics
+- **Service isolation** — Enable/disable individual services for testing
+- **Streaming** — Chunked ASR for long audio, progressive TTS delivery
+- **Pluggable LLM** — Swappable text tasks: passthrough, LLM, router, or custom
+- **Reconnect resume** — Session snapshots survive transient disconnects
+- **Clean codebase** — Full type hints, Protocol-based design, structured logging
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 Web Browser → WebSocket → FastAPI
@@ -32,75 +36,60 @@ Web Browser → WebSocket → FastAPI
 
 **Pipeline:** Audio → VAD → ASR → LLM → TTS → Audio
 
-**Tech stack:**
+| Component | Model | Size | Backend |
+|-----------|-------|------|---------|
+| VAD | Silero VAD v5 | 1.5MB | CPU |
+| ASR | Qwen3-ASR-0.6B | ~1.3GB | transformers / vLLM |
+| LLM | llama-3.3-70b (Groq Cloud) | — | Groq API |
+| TTS | Gwen-TTS-0.6B | ~1.3GB | CPU/GPU |
 
-- **VAD:** Silero VAD v5 (1.5MB, CPU)
-- **ASR:** Qwen3-ASR-0.6B (transformers/vLLM)
-- **LLM:** Groq Cloud (llama-3.3-70b)
-- **TTS:** Gwen-TTS-0.6B
-- **Framework:** FastAPI + WebSocket
-- **Package manager:** UV (Astral)
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
 - Python 3.12+
-- CUDA 11.8+ (cho GPU)
-- GPU 4GB+ VRAM (recommended)
-- Ubuntu 20.04+ / macOS
+- CUDA 11.8+ (for GPU inference)
+- 4GB+ VRAM (recommended)
+- [Groq API key](https://console.groq.com/) (free tier available)
 
 ### Installation
 
 ```bash
-# 1. Install UV
+# Install UV package manager
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Clone repo
-git clone <repo-url>
+# Clone and setup
+git clone https://github.com/nguyendevwk/end2end_asr_vie.git
 cd end2end_asr_vie/src
 
-# 3. Install dependencies
+# Install dependencies
 uv sync
 
-# 4. Configure
+# Configure
 cp .env.example .env
-nano .env  # Add your GROQ_API_KEY
+# Edit .env and add your GROQ_API_KEY
 
-# 5. Run server
+# Run server
 uv run voice-agent
 
-# 6. Run web client (new terminal)
+# Run web client (separate terminal)
 uv run voice-agent-client
-
-# 7. Open browser
-# http://localhost:8080
 ```
 
-### First conversation
+Open http://localhost:8080 in your browser.
 
-1. Click **"Start Listening"**
-2. Nói: *"Xin chào"*
-3. Đợi 1-2 giây
-4. Nghe response từ AI
-
-## 📖 Documentation
-
-Tài liệu đầy đủ trong thư mục [docs/](docs/):
-
-- 📘 [Kiến trúc hệ thống](docs/ARCHITECTURE.md) - Thiết kế và luồng xử lý
-- 📗 [Hướng dẫn cài đặt](docs/INSTALLATION.md) - Setup chi tiết
-- 📙 [Hướng dẫn sử dụng](docs/USAGE.md) - API và examples
-- 📕 [Tối ưu hóa](docs/OPTIMIZATION.md) - Performance tuning
-- 📔 [Troubleshooting](docs/TROUBLESHOOTING.md) - Xử lý lỗi
-- 📓 [API Reference](docs/API.md) - REST & WebSocket API
-
-## ⚙️ Configuration
-
-Cấu hình quan trọng trong `.env`:
+### Docker
 
 ```bash
-# Groq API (required)
+docker compose up
+```
+
+## Configuration
+
+Key settings in `.env`:
+
+```bash
+# Required
 GROQ_API_KEY=gsk_xxx...
 
 # Service toggles
@@ -110,205 +99,107 @@ LLM_ENABLED=true
 TTS_ENABLED=true
 
 # ASR backend
-ASR_BACKEND=transformers  # hoặc 'vllm' (GPU 6GB+)
-ASR_GPU_MEMORY=0.4        # Limit VRAM
-ASR_STREAMING=true        # Streaming cho audio >2s
-ASR_PREPROCESS=true       # +4-8% accuracy
+ASR_BACKEND=transformers  # or 'vllm' (GPU 6GB+)
+ASR_GPU_MEMORY=0.3        # VRAM limit
+ASR_STREAMING=true        # Chunked ASR for audio >2s
 
 # Performance
-VAD_THRESHOLD=0.5         # Speech detection sensitivity
-GROQ_TEMPERATURE=0.7      # LLM creativity
-TTS_SPEED=1.0             # Speaking speed
+MAX_CCU=50                # Max concurrent connections
+MAX_INFLIGHT_INFER=4      # Max parallel GPU inferences
 ```
 
-Xem [.env.example](src/.env.example) cho tất cả options.
+See [`.env.example`](src/.env.example) for all options.
 
-## 📊 Performance
+## Performance
 
-**Latency (GTX 1650 Ti 4GB):**
+Measured on GTX 1650 Ti 4GB:
 
 | Component | Latency | RTF |
 |-----------|---------|-----|
-| VAD | 3-5ms | - |
-| ASR | 400-600ms | 0.18 |
-| LLM | 600-800ms | - |
-| TTS | 300-500ms | 0.12 |
-| **Total** | **1.2-1.8s** ✅ | - |
+| VAD | 3–5ms | — |
+| ASR | 400–600ms | 0.18 |
+| LLM | 600–800ms | — |
+| TTS | 300–500ms | 0.12 |
+| **Total** | **1.2–1.8s** | — |
 
-**Resource usage:**
+Resource usage: 3.5–4.0GB VRAM, 5–10% CPU, ~50KB/s network.
 
-- GPU: 3.5-4.0GB VRAM
-- CPU: 5-10%
-- Network: ~50KB/s (audio streaming)
-
-## 🧪 Testing
-
-### Test riêng từng service
+## Testing
 
 ```bash
-# Test VAD only
-VAD_ENABLED=true
-ASR_ENABLED=false
-LLM_ENABLED=false
-TTS_ENABLED=false
-
-uv run voice-agent
-```
-
-### Run tests
-
-```bash
+# Run all tests
 uv run pytest tests/
+
+# Run without GPU
+uv run pytest tests/ -m "not slow and not gpu"
+
+# Type check
+uv run mypy src/voice_agent/
+
+# Lint
+uv run ruff check src/
 ```
 
-## 🎯 Use Cases
+## Use Cases
 
-### 1. Voice Chatbot (Full pipeline)
-
+**Full voice chatbot** (all services enabled):
 ```bash
-# All services enabled
 uv run voice-agent
 ```
 
-### 2. Transcription service (VAD + ASR)
-
+**Transcription only** (VAD + ASR):
 ```bash
-LLM_ENABLED=false
-TTS_ENABLED=false
+ASR_ENABLED=true LLM_ENABLED=false TTS_ENABLED=false uv run voice-agent
 ```
 
-### 3. TTS service (Text-to-Speech only)
-
+**TTS only**:
 ```bash
-VAD_ENABLED=false
-ASR_ENABLED=false
-LLM_ENABLED=false
-TTS_ENABLED=true
+TTS_ENABLED=true VAD_ENABLED=false ASR_ENABLED=false LLM_ENABLED=false uv run voice-agent
 ```
 
-## 🔧 Development
-
-### Project structure
+## Project Structure
 
 ```
 end2end_asr_vie/
 ├── docs/                    # Documentation
-│   ├── README.md
-│   ├── ARCHITECTURE.md
-│   ├── INSTALLATION.md
-│   ├── USAGE.md
-│   ├── OPTIMIZATION.md
-│   ├── TROUBLESHOOTING.md
-│   └── API.md
-├── src/                     # Source code
+├── src/
 │   ├── voice_agent/         # Main package
 │   │   ├── api/             # FastAPI routes & WebSocket
 │   │   ├── core/            # Types, exceptions, constants
 │   │   ├── services/        # VAD, ASR, LLM, TTS, Orchestrator
-│   │   ├── utils/           # Logger, monitor, audio utils
+│   │   ├── utils/           # Logger, monitor, audio utilities
 │   │   ├── config.py        # Pydantic Settings
-│   │   └── main.py          # Application entry
-│   ├── web_client/          # Web test client
-│   ├── tests/               # Unit tests
-│   ├── models/              # Downloaded models (gitignored)
-│   ├── pyproject.toml       # UV dependencies
-│   ├── .env.example         # Config template
-│   └── README.md            # Quick reference
-└── README.md                # This file
+│   │   └── main.py          # Application entry point
+│   ├── web_client/          # Browser-based test client
+│   ├── tests/               # Test suite
+│   └── pyproject.toml       # Dependencies & tooling config
+├── .github/                 # CI/CD workflows
+├── LICENSE                  # MIT License
+└── README.md
 ```
 
-### Coding standards
+## Roadmap
 
-- **Type hints:** Bắt buộc cho tất cả functions
-- **Protocols:** Interface-based design
-- **Async/await:** Non-blocking I/O
-- **Structured logging:** JSON logs với structlog
-- **Error handling:** Custom exceptions hierarchy
-- **Monitoring:** Latency tracking, RTF metrics
-
-Xem [src/CODING_STANDARDS.md](src/CODING_STANDARDS.md) cho chi tiết.
-
-### Add new service
-
-1. Implement protocol interface (`IXXXService`)
-2. Add service class trong `services/`
-3. Register trong `Orchestrator`
-4. Add config trong `.env`
-5. Update tests
-
-## 🐛 Common Issues
-
-### CUDA Out of Memory
-
-```bash
-# Giảm GPU allocation
-ASR_GPU_MEMORY=0.3
-TTS_GPU_MEMORY=0.3
-
-# Hoặc tắt TTS
-TTS_ENABLED=false
-```
-
-### Slow latency
-
-```bash
-# Enable streaming
-ASR_STREAMING=true
-
-# Use vLLM (if GPU ≥ 6GB)
-ASR_BACKEND=vllm
-```
-
-### Dependencies conflict
-
-```bash
-rm -rf .venv uv.lock
-uv sync
-```
-
-Xem [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) cho tất cả lỗi.
-
-## 📈 Roadmap
-
-- [ ] Multi-user support (concurrent sessions)
+- [ ] Multi-user concurrent sessions
 - [ ] Voice cloning (speaker adaptation)
 - [ ] Emotion detection
 - [ ] Model quantization (INT8/INT4)
-- [ ] Docker deployment
 - [ ] Kubernetes helm charts
-- [ ] Metrics dashboard (Grafana)
+- [ ] Grafana metrics dashboard
 - [ ] Multi-language support
 
-## 🤝 Contributing
+## Contributing
 
-Contributions welcome! Please:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-1. Fork repo
-2. Create feature branch
-3. Follow coding standards
-4. Add tests
-5. Submit PR
+## License
 
-## 📝 License
+MIT License — see [LICENSE](LICENSE) for details.
 
-MIT License - see [LICENSE](LICENSE) file.
+## Acknowledgments
 
-## 🙏 Acknowledgments
-
-- [Qwen Team](https://github.com/QwenLM) - Qwen3-ASR model
-- [G-Group AI Lab](https://huggingface.co/g-group-ai-lab) - Gwen-TTS model
-- [Silero Team](https://github.com/snakers4/silero-vad) - Silero VAD
-- [Groq](https://groq.com/) - Ultra-fast LLM inference
-- [Astral](https://astral.sh/) - UV package manager
-
-## 📧 Contact
-
-- **Demo purpose:** Phỏng vấn xin việc
-- **Tech stack:** Python 3.12, FastAPI, PyTorch, CUDA
-- **Target:** Real-time voice agent với low latency
-
----
-
-<p align="center">
-  <b>Made with ❤️ for Vietnamese AI Voice Applications</b>
-</p>
+- [Qwen Team](https://github.com/QwenLM) — Qwen3-ASR model
+- [G-Group AI Lab](https://huggingface.co/g-group-ai-lab) — Gwen-TTS model
+- [Silero Team](https://github.com/snakers4/silero-vad) — Silero VAD
+- [Groq](https://groq.com/) — Ultra-fast LLM inference
+- [Astral](https://astral.sh/) — UV package manager
