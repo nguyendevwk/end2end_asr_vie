@@ -120,22 +120,26 @@ class TTSService:
         timer = Timer()
         try:
             with timer:
-                # Generate speech
+                # Generate speech (blocking model call -> worker thread)
+                model = self._model
+                gen_kwargs = dict(self._generation_config)
                 if self._config.voice_ref_audio and self._config.voice_ref_text:
                     # Use voice cloning
-                    wavs, sr = self._model.generate_voice_clone(
+                    wavs, sr = await asyncio.to_thread(
+                        model.generate_voice_clone,
                         text=text,
                         language="Vietnamese",
                         ref_audio=self._config.voice_ref_audio,
                         ref_text=self._config.voice_ref_text,
-                        **self._generation_config,
+                        **gen_kwargs,
                     )
                 else:
                     # Default voice (no cloning)
-                    wavs, sr = self._model.generate(
+                    wavs, sr = await asyncio.to_thread(
+                        model.generate,
                         text=text,
                         language="Vietnamese",
-                        **self._generation_config,
+                        **gen_kwargs,
                     )
 
                 # Get first result
@@ -206,21 +210,27 @@ class TTSService:
         first_chunk = True
 
         try:
-            # Generate full audio (Gwen-TTS doesn't support progressive generation)
-            # TODO: Implement true streaming if model supports it
+            # Generate full audio (Gwen-TTS doesn't support progressive generation).
+            # Run blocking inference in a worker thread, then yield chunks
+            # immediately with NO artificial sleep — the old
+            # `sleep(chunk_ms * 0.8)` added ~0.8s latency per second of audio.
+            model = self._model
+            gen_kwargs = dict(self._generation_config)
             if self._config.voice_ref_audio and self._config.voice_ref_text:
-                wavs, sr = self._model.generate_voice_clone(
+                wavs, sr = await asyncio.to_thread(
+                    model.generate_voice_clone,
                     text=text,
                     language="Vietnamese",
                     ref_audio=self._config.voice_ref_audio,
                     ref_text=self._config.voice_ref_text,
-                    **self._generation_config,
+                    **gen_kwargs,
                 )
             else:
-                wavs, sr = self._model.generate(
+                wavs, sr = await asyncio.to_thread(
+                    model.generate,
                     text=text,
                     language="Vietnamese",
-                    **self._generation_config,
+                    **gen_kwargs,
                 )
 
             audio_np = wavs[0] if isinstance(wavs, list) else wavs
@@ -232,7 +242,9 @@ class TTSService:
             # Calculate chunk size in samples
             chunk_samples = int(SAMPLE_RATE * chunk_duration_ms / 1000)
 
-            # Yield audio in chunks
+            # Yield audio in chunks as fast as possible (no pacing sleep).
+            # Pacing is the web client's job (scheduled playback); sleeping
+            # here only delays TTFA and risks WebSocket backpressure.
             for i in range(0, len(audio_np), chunk_samples):
                 chunk = audio_np[i : i + chunk_samples]
                 chunk_bytes = numpy_to_pcm(chunk)
@@ -247,10 +259,6 @@ class TTSService:
                     first_chunk = False
 
                 yield chunk_bytes
-
-                # Small delay to simulate real-time playback rate
-                # This prevents overwhelming the client buffer
-                await asyncio.sleep(chunk_duration_ms / 1000 * 0.8)
 
             total_ms = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.debug(
@@ -313,3 +321,8 @@ class TTSService:
     def model_name(self) -> str:
         """Get model name."""
         return self._config.model_name
+
+    @property
+    def stream_chunk_ms(self) -> int:
+        """Audio chunk duration (ms) for streaming synthesis."""
+        return self._config.stream_chunk_ms
