@@ -292,7 +292,7 @@ class AudioPostprocessor:
             return result
 
         except Exception as e:
-            logger.error("postprocess_failed", error=str(e))
+            logger.error("postprocess_failed", error=str(e), exc_info=True)
             # Return original on error (graceful degradation)
             return audio
 
