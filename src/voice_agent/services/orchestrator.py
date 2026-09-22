@@ -320,14 +320,25 @@ class Orchestrator:
             stream_start = asyncio.get_running_loop().time()
             final_parts: list[str] = []
             try:
-                async for asr_result in self._asr.transcribe_stream(
-                    audio,
-                    chunk_duration_ms=2000,
-                ):
-                    if not asr_result.text:
-                        continue
-                    if asr_result.is_final:
-                        final_parts.append(asr_result.text.strip())
+                if rt.infer_semaphore is None:
+                    async for asr_result in self._asr.transcribe_stream(
+                        audio,
+                        chunk_duration_ms=2000,
+                    ):
+                        if not asr_result.text:
+                            continue
+                        if asr_result.is_final:
+                            final_parts.append(asr_result.text.strip())
+                else:
+                    async with rt.infer_semaphore:
+                        async for asr_result in self._asr.transcribe_stream(
+                            audio,
+                            chunk_duration_ms=2000,
+                        ):
+                            if not asr_result.text:
+                                continue
+                            if asr_result.is_final:
+                                final_parts.append(asr_result.text.strip())
                 transcript = " ".join(final_parts).strip()
             except Exception as e:
                 # Degrade to single-shot instead of dropping the turn.
@@ -413,7 +424,13 @@ class Orchestrator:
                 yield sentence
 
         try:
+            _task_deadline = asyncio.get_running_loop().time() + rt.llm_timeout_s
             async for sentence in _task_sentences():
+                if asyncio.get_running_loop().time() > _task_deadline:
+                    logger.warning("task_stream_timeout", session_id=self.session_id)
+                    self._metrics.inc("errors_task_timeout")
+                    yield "ERROR:Text task timed out"
+                    break
                 if self._interrupted:
                     logger.info("pipeline_interrupted", session_id=self.session_id)
                     self._interrupted = False
@@ -453,9 +470,15 @@ class Orchestrator:
                     )
                     while True:
                         try:
-                            audio_chunk = await asyncio.wait_for(
-                                tts_stream.__anext__(), rt.tts_timeout_s
-                            )
+                            if rt.infer_semaphore is None:
+                                audio_chunk = await asyncio.wait_for(
+                                    tts_stream.__anext__(), rt.tts_timeout_s
+                                )
+                            else:
+                                async with rt.infer_semaphore:
+                                    audio_chunk = await asyncio.wait_for(
+                                        tts_stream.__anext__(), rt.tts_timeout_s
+                                    )
                         except StopAsyncIteration:
                             break
                         chunk_count += 1
