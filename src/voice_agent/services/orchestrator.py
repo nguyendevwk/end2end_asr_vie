@@ -46,6 +46,10 @@ class PipelineRuntime:
     max_retries: int = 1  # extra attempts after the first try
     # Shared semaphore bounding concurrent GPU inference (None = unbounded).
     infer_semaphore: asyncio.Semaphore | None = None
+    # Streaming ASR threshold: audio longer than this uses chunked streaming.
+    streaming_threshold_ms: float = 2000.0
+    # Prefix for passthrough task echo (configurable per deployment).
+    passthrough_prefix: str = "You said: "
 
 
 class Orchestrator:
@@ -102,7 +106,7 @@ class Orchestrator:
         elif llm is not None:
             self._task = LLMTask(llm=llm)
         else:
-            self._task = PassthroughTask(prefix="Bạn nói: ")
+            self._task = PassthroughTask(prefix=self._runtime.passthrough_prefix)
         self._runtime = runtime or PipelineRuntime()
 
         self.session_id = session_id or str(uuid.uuid4())[:8]
@@ -278,7 +282,7 @@ class Orchestrator:
             return
 
         # Use streaming ASR if enabled and audio is long enough
-        use_streaming = self._asr.streaming and audio_duration_ms > 2000  # >2s only
+        use_streaming = self._asr.streaming and audio_duration_ms > self._runtime.streaming_threshold_ms
 
         transcript = ""
         asr_latency_ms = 0.0
