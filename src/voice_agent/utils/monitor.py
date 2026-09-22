@@ -212,7 +212,7 @@ class PipelineMonitor:
 
 class MetricsContext:
     """
-    Context manager for tracking a complete pipeline execution.
+    Async context manager for tracking a complete pipeline execution.
 
     Example:
         >>> async with MetricsContext(monitor) as ctx:
@@ -223,15 +223,14 @@ class MetricsContext:
 
     def __init__(self, monitor: PipelineMonitor) -> None:
         self._monitor = monitor
-        self._timer = Timer()
+        self._start_time = 0.0
 
     async def __aenter__(self) -> MetricsContext:
         self._monitor.start_turn()
-        self._timer.__enter__()
+        self._start_time = time.perf_counter()
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        self._timer.__exit__(*args)
         self._monitor.end_turn()
 
     def record_asr(
