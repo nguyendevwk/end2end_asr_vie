@@ -43,9 +43,16 @@ class AudioConfig:
         return self.sample_rate * self.chunk_duration_ms // 1000
 
     @property
+    def bytes_per_sample(self) -> int:
+        """Bytes per sample based on format."""
+        if self.format == AudioFormat.PCM_F32LE:
+            return 4
+        return 2  # PCM_S16LE
+
+    @property
     def chunk_bytes(self) -> int:
-        """Number of bytes per chunk (for PCM_S16LE)."""
-        return self.chunk_samples * 2 * self.channels
+        """Number of bytes per chunk."""
+        return self.chunk_samples * self.bytes_per_sample * self.channels
 
 
 @dataclass(frozen=True, slots=True)
