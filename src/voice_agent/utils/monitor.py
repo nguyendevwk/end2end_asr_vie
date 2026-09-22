@@ -79,6 +79,17 @@ class PipelineMonitor:
             turn_id=self.turn_id,
         )
 
+    def mark_processing_start(self) -> None:
+        """
+        Reset turn timer at speech end (processing start).
+
+        TTFA/E2E must be measured from when the user *stops* speaking,
+        not from speech start — otherwise metrics include seconds of
+        user talk time and become useless for latency tuning.
+        """
+        self._turn_start = time.perf_counter()
+        self._first_audio_time = 0.0
+
     def record_vad(self, latency_ms: float, is_speech: bool) -> None:
         """Record VAD detection latency."""
         self.vad_stats.record(latency_ms)
