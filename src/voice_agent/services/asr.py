@@ -55,11 +55,13 @@ class ASRService:
         self._model: Qwen3ASRModel | None = None
         self._started = False
         self._preprocessor = AudioPreprocessor()
+        self._lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Load ASR model with specified backend."""
-        if self._started:
-            return
+        async with self._lock:
+            if self._started:
+                return
 
         backend = self._config.backend.lower()
         logger.info(

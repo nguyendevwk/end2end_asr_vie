@@ -36,11 +36,13 @@ class LLMService:
         self._config = config or LLMConfig()
         self._client: AsyncOpenAI | None = None
         self._started = False
+        self._lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Initialize OpenAI client."""
-        if self._started:
-            return
+        async with self._lock:
+            if self._started:
+                return
 
         if not self._config.api_key:
             raise LLMError("API key is required. Set GROQ_API_KEY environment variable.")

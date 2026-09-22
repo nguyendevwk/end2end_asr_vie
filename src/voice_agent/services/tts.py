@@ -42,6 +42,7 @@ class TTSService:
         self._config = config or TTSConfig()
         self._model: Qwen3TTSModel | None = None
         self._started = False
+        self._lock = asyncio.Lock()
 
         # Generation config for Gwen-TTS
         self._generation_config = {
@@ -58,8 +59,9 @@ class TTSService:
 
     async def start(self) -> None:
         """Load TTS model."""
-        if self._started:
-            return
+        async with self._lock:
+            if self._started:
+                return
 
         logger.info("loading_tts_model", model=self._config.model_name)
 
