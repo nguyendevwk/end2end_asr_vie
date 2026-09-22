@@ -307,7 +307,7 @@ class _VADIterator:
             if speech_prob >= self._threshold:
                 if not self._triggered:
                     if self._speech_start == 0:
-                        self._speech_start = self._current_sample
+                        self._speech_start = self._current_sample - VAD_CHUNK_SAMPLES
                     if (
                         self._current_sample - self._speech_start
                         >= self._min_speech_samples
