@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from voice_agent.core import (
@@ -113,6 +113,27 @@ class Settings(BaseSettings):
     ws_ping_interval_s: float = Field(default=20.0, description="Server heartbeat interval")
     ws_ping_timeout_s: float = Field(default=60.0, description="Close after silence")
     session_ttl_s: float = Field(default=300.0, description="Reconnect resume window")
+
+    @field_validator("asr_gpu_memory")
+    @classmethod
+    def validate_gpu_memory(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError(f"asr_gpu_memory must be between 0.0 and 1.0, got {v}")
+        return v
+
+    @field_validator("max_ccu", "max_inflight_infer")
+    @classmethod
+    def validate_positive_int(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(f"Value must be positive, got {v}")
+        return v
+
+    @field_validator("session_ttl_s")
+    @classmethod
+    def validate_ttl(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError(f"session_ttl_s must be positive, got {v}")
+        return v
 
 
 @lru_cache
