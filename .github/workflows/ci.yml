@@ -23,11 +23,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
+        working-directory: src
         run: uv sync
       - name: Ruff check
-        run: uv run ruff check src/
+        working-directory: src
+        run: uv run ruff check voice_agent/
       - name: Ruff format check
-        run: uv run ruff format --check src/
+        working-directory: src
+        run: uv run ruff format --check voice_agent/
 
   typecheck:
     name: Type Check
@@ -41,9 +44,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
+        working-directory: src
         run: uv sync
       - name: Mypy
-        run: uv run mypy src/voice_agent/
+        working-directory: src
+        run: uv run mypy voice_agent/
 
   test:
     name: Tests
@@ -57,13 +62,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
+        working-directory: src
         run: uv sync
       - name: Run tests
+        working-directory: src
         run: uv run pytest tests/ -m "not slow and not gpu" -v --tb=short
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: htmlcov/
-          retention-days: 7
