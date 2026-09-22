@@ -115,7 +115,7 @@ class LLMService:
                     max_tokens=self._config.max_tokens,
                 )
 
-                text = response.choices[0].message.content or ""
+                text = response.choices[0].message.content or "" if response.choices else ""
 
             logger.info(
                 "llm_generate",
@@ -177,9 +177,8 @@ class LLMService:
             )
 
             async for chunk in stream:
-                if chunk.choices[0].delta.content:
+                if chunk.choices and chunk.choices[0].delta.content:
                     token = chunk.choices[0].delta.content
-                    total_tokens += 1
 
                     # Record time to first token
                     if not ttft_recorded:
@@ -213,6 +212,11 @@ class LLMService:
                 yield buffer.strip()
 
             total_ms = (time.perf_counter() - start_time) * 1000
+            # Count tokens from API usage if available, else estimate from chars
+            if hasattr(stream, "usage") and stream.usage:
+                total_tokens = stream.usage.total_tokens
+            else:
+                total_tokens = sum(len(s.split()) for s in [query] + [buffer])
             logger.info(
                 "llm_stream_complete",
                 total_ms=round(total_ms, 2),
