@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from voice_agent import __version__
+from voice_agent.core import DEFAULT_ASR_MODEL, DEFAULT_LLM_MODEL, DEFAULT_TTS_MODEL
+from voice_agent.services import available_tasks
 from voice_agent.utils import get_registry
 from voice_agent.utils.session_store import get_session_store
 
+if TYPE_CHECKING:
+    from voice_agent.config import Settings
+
 router = APIRouter()
+
+# Module-level state container for dependency injection (set by main.py at startup)
+_app_state: dict[str, Any] = {}
+
+
+def set_app_state(settings: "Settings", services: dict[str, Any]) -> None:
+    """Called by main.py lifespan to inject state into routes."""
+    _app_state["settings"] = settings
+    _app_state["services"] = services
 
 
 @router.get("/health")
@@ -29,10 +43,13 @@ async def live() -> dict[str, str]:
 @router.get("/health/ready")
 async def ready() -> JSONResponse:
     """Readiness: all enabled services initialized."""
-    from voice_agent import main as app_main
+    settings = _app_state.get("settings")
+    services = _app_state.get("services", {})
+
+    if settings is None:
+        return JSONResponse({"ready": False, "error": "app not initialized"}, status_code=503)
 
     checks: dict[str, str] = {}
-    settings = app_main.settings
     ok = True
 
     def check(name: str, enabled: bool, svc: object) -> None:
@@ -45,10 +62,10 @@ async def ready() -> JSONResponse:
             checks[name] = "not_ready"
             ok = False
 
-    check("vad", settings.vad_enabled, app_main.vad_service)
-    check("asr", settings.asr_enabled, app_main.asr_service)
-    check("tts", settings.tts_enabled, app_main.tts_service)
-    check("llm", settings.llm_enabled, app_main.llm_service)
+    check("vad", settings.vad_enabled, services.get("vad"))
+    check("asr", settings.asr_enabled, services.get("asr"))
+    check("tts", settings.tts_enabled, services.get("tts"))
+    check("llm", settings.llm_enabled, services.get("llm"))
 
     status = 200 if ok else 503
     return JSONResponse({"ready": ok, "services": checks}, status_code=status)
@@ -57,9 +74,6 @@ async def ready() -> JSONResponse:
 @router.get("/info")
 async def info() -> dict[str, Any]:
     """Service information including version and models."""
-    from voice_agent.core import DEFAULT_ASR_MODEL, DEFAULT_LLM_MODEL, DEFAULT_TTS_MODEL
-    from voice_agent.services import available_tasks
-
     return {
         "name": "voice-agent",
         "version": __version__,
@@ -84,5 +98,5 @@ async def metrics() -> PlainTextResponse:
 async def metrics_json() -> dict[str, Any]:
     """Machine-readable metrics snapshot."""
     data = get_registry().to_dict()
-    data["sessions_stored"] = get_session_store().size  # type: ignore[assignment]
+    data["sessions_stored"] = get_session_store().size
     return data

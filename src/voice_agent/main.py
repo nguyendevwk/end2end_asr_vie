@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from voice_agent import __version__
 from voice_agent.api import router, websocket_endpoint
+from voice_agent.api.routes import set_app_state
 from voice_agent.config import get_settings
 from voice_agent.core import (
     ASRConfig,
@@ -224,6 +225,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
         _sync_runtime_knobs()
+        set_app_state(settings, {
+            "vad": vad_service,
+            "asr": asr_service,
+            "tts": tts_service,
+            "llm": llm_service,
+        })
         _print_banner()
 
     except Exception as e:
