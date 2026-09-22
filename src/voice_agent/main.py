@@ -18,7 +18,7 @@ import asyncio
 import signal
 import sys
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,10 +36,22 @@ from voice_agent.services import (
     ASRService,
     LLMService,
     Orchestrator,
+    PipelineRuntime,
     TTSService,
     VADService,
+    create_text_task,
 )
-from voice_agent.utils import get_logger, setup_logging
+from voice_agent.utils import (
+    AdmissionGate,
+    get_logger,
+    setup_logging,
+)
+from voice_agent.utils.session_store import SessionStore, get_session_store
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from voice_agent.services.text_tasks import TextTask
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                              CONFIGURATION                                    ║
@@ -59,6 +71,18 @@ vad_service: VADService | None = None
 asr_service: ASRService | None = None
 tts_service: TTSService | None = None
 llm_service: LLMService | None = None
+
+# Production: shared admission gate, GPU inference semaphore, session store
+_connection_gate = AdmissionGate(max_concurrent=50)
+_infer_semaphore = asyncio.Semaphore(4)
+_session_store: SessionStore = get_session_store()
+
+
+def _sync_runtime_knobs() -> None:
+    """Apply settings to shared production primitives (called on startup)."""
+    global _connection_gate, _infer_semaphore
+    _connection_gate = AdmissionGate(max_concurrent=settings.max_ccu)
+    _infer_semaphore = asyncio.Semaphore(settings.max_inflight_infer)
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
@@ -143,12 +167,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         llm_enabled=settings.llm_enabled,
     )
 
-    # ═══════════════ STARTUP ═══════════════
+    # ═══════════════ STARTUP (parallel: ASR+TTS loads take ~30s each) ═══════════════
     try:
-        # Initialize enabled services only
+        # Initialize enabled services concurrently to cut startup time
+        tasks: dict[str, asyncio.Task[Any]] = {}
         if settings.vad_enabled:
             logger.info("📦 loading_vad_model", model="Silero VAD v5")
-            vad_service = await _init_vad()
+            tasks["vad"] = asyncio.create_task(_init_vad())
         else:
             logger.info("⏭️ vad_disabled")
 
@@ -158,21 +183,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 model=settings.asr_model,
                 backend=settings.asr_backend,
             )
-            asr_service = await _init_asr()
+            tasks["asr"] = asyncio.create_task(_init_asr())
         else:
             logger.info("⏭️ asr_disabled")
 
         if settings.tts_enabled:
             logger.info("🔊 loading_tts_model", model=settings.tts_model)
-            tts_service = await _init_tts()
+            tasks["tts"] = asyncio.create_task(_init_tts())
         else:
             logger.info("⏭️ tts_disabled")
 
         if settings.llm_enabled:
             logger.info("🤖 connecting_llm", model=settings.llm_model)
-            llm_service = await _init_llm()
+            tasks["llm"] = asyncio.create_task(_init_llm())
         else:
             logger.info("⏭️ llm_disabled")
+
+        if tasks:
+            results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+            for name, result in zip(tasks.keys(), results, strict=True):
+                if isinstance(result, Exception):
+                    logger.error(f"❌ {name}_init_failed", error=str(result))
+                    raise result
+                if name == "vad":
+                    vad_service = result
+                elif name == "asr":
+                    asr_service = result
+                elif name == "tts":
+                    tts_service = result
+                elif name == "llm":
+                    llm_service = result
 
         logger.info(
             "✅ all_services_ready",
@@ -182,6 +222,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             llm="OK" if llm_service else "DISABLED",
         )
 
+        _sync_runtime_knobs()
         _print_banner()
 
     except Exception as e:
@@ -293,36 +334,61 @@ async def agent_websocket(websocket: WebSocket) -> None:
     """
     WebSocket endpoint for real-time voice agent.
 
-    Protocol:
-        Client → Server: Binary (PCM S16LE audio @ 16kHz mono)
-        Server → Client: Binary (TTS audio) or Text (events)
-
-    Events:
-        LISTENING   - Ready for voice input
-        PROCESSING  - Transcribing and generating response
-        SPEAKING    - Playing TTS response
-        IDLE        - No activity
-        TRANSCRIPT:<text> - Recognized speech
-        ERROR:<msg> - Error occurred
-
-    Note: Some services may be disabled for testing. The orchestrator
-    will skip disabled services gracefully.
+    Production protocol:
+        Client → Server: Binary PCM S16LE @16kHz, or text commands
+            (HELLO[:session_id], PONG, INTERRUPT, CLEAR_HISTORY,
+            SET_TASK:<name>)
+        Server → Client: Binary TTS audio or text events
+            (READY, LISTENING, PROCESSING, SPEAKING, IDLE, TRANSCRIPT:,
+            RESPONSE_TEXT:, ERROR:, BUSY:, PING)
     """
     # At minimum need VAD to detect speech
     if not vad_service:
         await websocket.close(code=1011, reason="VAD service not ready")
         return
 
-    # Create orchestrator for this WebSocket session
-    # Pass None for disabled services - orchestrator will handle gracefully
-    orchestrator = Orchestrator(
-        vad=vad_service,
-        asr=asr_service,
-        llm=llm_service,
-        tts=tts_service,
-    )
+    def task_factory(name: str) -> TextTask:
+        if name == "llm":
+            if llm_service is None:
+                raise ValueError("LLM service is disabled")
+            return create_text_task("llm", llm=llm_service)
+        if name == "passthrough":
+            return create_text_task("passthrough", prefix=settings.text_task_prefix)
+        return create_text_task(name)
 
-    await websocket_endpoint(websocket, orchestrator)
+    def create_orchestrator(session_id: str | None = None) -> Orchestrator:
+        runtime = PipelineRuntime(
+            asr_timeout_s=settings.asr_timeout_s,
+            tts_timeout_s=settings.tts_timeout_s,
+            llm_timeout_s=settings.llm_timeout_s,
+            llm_first_token_timeout_s=settings.llm_first_token_timeout_s,
+            max_retries=settings.max_retries,
+            infer_semaphore=_infer_semaphore,
+        )
+        try:
+            task = task_factory(settings.text_task)
+        except ValueError:
+            task = task_factory("passthrough")
+        # Pass None for disabled services - orchestrator degrades gracefully
+        return Orchestrator(
+            vad=vad_service,
+            asr=asr_service,
+            llm=llm_service,
+            tts=tts_service,
+            session_id=session_id,
+            text_task=task,
+            runtime=runtime,
+        )
+
+    await websocket_endpoint(
+        websocket,
+        create_orchestrator,
+        gate=_connection_gate,
+        sessions=_session_store,
+        task_factory=task_factory,
+        ping_interval_s=settings.ws_ping_interval_s,
+        ping_timeout_s=settings.ws_ping_timeout_s,
+    )
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
