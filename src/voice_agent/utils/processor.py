@@ -145,7 +145,7 @@ class AudioPreprocessor:
 
         from scipy import signal
 
-        processed = audio_np.copy()
+        processed = audio_np
 
         # 1. DC offset removal
         if self._config.remove_dc:
@@ -167,7 +167,7 @@ class AudioPreprocessor:
         if self._config.normalize:
             processed = self._normalize(processed)
 
-        return processed.astype(np.float32)
+        return processed
 
     def _apply_noise_gate(self, audio: np.ndarray) -> np.ndarray:
         """Apply noise gate to suppress low-level noise (vectorized)."""
@@ -293,7 +293,7 @@ class AudioPostprocessor:
 
         except Exception as e:
             logger.error("postprocess_failed", error=str(e))
-            # Return original on error
+            # Return original on error (graceful degradation)
             return audio
 
     def process_numpy(self, audio_np: np.ndarray) -> np.ndarray:
@@ -309,7 +309,7 @@ class AudioPostprocessor:
         if len(audio_np) == 0:
             return audio_np
 
-        processed = audio_np.copy()
+        processed = audio_np
 
         # 1. Normalization
         if self._config.normalize:
@@ -322,7 +322,7 @@ class AudioPostprocessor:
         # 3. Fade in/out
         processed = self._apply_fades(processed)
 
-        return processed.astype(np.float32)
+        return processed
 
     def _normalize(self, audio: np.ndarray) -> np.ndarray:
         """Normalize to target level."""

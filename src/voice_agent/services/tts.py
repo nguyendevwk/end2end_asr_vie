@@ -302,13 +302,11 @@ class TTSService:
             ref_audio: Path to reference audio file
             ref_text: Transcript of reference audio
         """
-        self._config = TTSConfig(
-            model_name=self._config.model_name,
+        import dataclasses
+        self._config = dataclasses.replace(
+            self._config,
             voice_ref_audio=ref_audio,
             voice_ref_text=ref_text,
-            temperature=self._config.temperature,
-            top_k=self._config.top_k,
-            top_p=self._config.top_p,
         )
         logger.info("voice_set", ref_audio=ref_audio)
 
