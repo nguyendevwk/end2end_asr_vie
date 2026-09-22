@@ -293,8 +293,8 @@ class ASRService:
                 stability = self._calculate_stability(prev_text, text)
 
                 # Determine if this should be final result
-                # Final if: last chunk OR high stability OR significant new content
-                is_final = is_last_chunk or (stability > self.MIN_STABILITY_THRESHOLD and len(text) > len(prev_text))
+                # Final if: last chunk OR high stability
+                is_final = is_last_chunk or stability > self.MIN_STABILITY_THRESHOLD
 
                 # Emit interim result first (if enabled and not final)
                 if enable_interim and not is_final:
@@ -321,7 +321,7 @@ class ASRService:
                     accumulated_text = final_text
 
                     yield TranscriptionResult(
-                        text=text,  # Current chunk text (not accumulated)
+                        text=final_text,
                         language=result.language if result else "vi",
                         latency_ms=timer.elapsed_ms,
                         is_final=True,
@@ -677,12 +677,11 @@ class ASRService:
         # Strip whitespace
         text = text.strip()
 
-        # Remove repeated spaces
-        while "  " in text:
-            text = text.replace("  ", " ")
+        # Remove repeated spaces (O(n) instead of O(n^2))
+        text = " ".join(text.split())
 
         # Remove common ASR artifacts
-        artifacts = ["<|endoftext|>", "<unk>", "[UNK]", "<s>", "</s>"]
+        artifacts = ["<|notimestamps|>", "<unk>", "[UNK]", "<s>", "</s>"]
         for artifact in artifacts:
             text = text.replace(artifact, "")
 
