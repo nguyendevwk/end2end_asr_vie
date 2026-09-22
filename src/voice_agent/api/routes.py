@@ -39,7 +39,7 @@ async def ready() -> JSONResponse:
         nonlocal ok
         if not enabled:
             checks[name] = "disabled"
-        elif svc is not None and getattr(svc, "is_started", True):
+        elif svc is not None and getattr(svc, "is_started", False):
             checks[name] = "ready"
         else:
             checks[name] = "not_ready"
