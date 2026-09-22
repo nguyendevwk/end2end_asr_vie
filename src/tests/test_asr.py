@@ -15,7 +15,7 @@ class TestASRConfig:
         assert config.model_name == "Qwen/Qwen3-ASR-0.6B"
         assert config.language is None
         assert config.max_new_tokens == 256
-        assert config.gpu_memory_utilization == 0.5
+        assert config.gpu_memory_utilization == 0.3
 
     def test_custom_config(self) -> None:
         """Should create custom config."""
