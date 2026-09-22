@@ -62,12 +62,12 @@ class AudioPreprocessor:
             config: Preprocessing configuration
         """
         self._config = config or PreprocessConfig()
-        self._hp_filter: np.ndarray | None = None
-        self._lp_filter: np.ndarray | None = None
+        self._sos_hp: np.ndarray | None = None
+        self._sos_lp: np.ndarray | None = None
         self._initialized = False
 
     def _init_filters(self) -> None:
-        """Initialize filter coefficients."""
+        """Initialize filter coefficients (SOS form: stable + single-pass)."""
         if self._initialized:
             return
 
@@ -76,19 +76,15 @@ class AudioPreprocessor:
         sr = self._config.sample_rate
         nyq = sr / 2
 
-        # High-pass filter
+        # High-pass filter (2nd-order SOS: stable, causal, streaming-ready)
         if self._config.high_pass_hz > 0:
             hp_normalized = self._config.high_pass_hz / nyq
-            self._hp_b, self._hp_a = signal.butter(
-                4, hp_normalized, btype="high"
-            )
+            self._sos_hp = signal.butter(2, hp_normalized, btype="high", output="sos")
 
         # Low-pass filter
         if self._config.low_pass_hz > 0 and self._config.low_pass_hz < nyq:
             lp_normalized = self._config.low_pass_hz / nyq
-            self._lp_b, self._lp_a = signal.butter(
-                4, lp_normalized, btype="low"
-            )
+            self._sos_lp = signal.butter(2, lp_normalized, btype="low", output="sos")
 
         self._initialized = True
         logger.debug("preprocessor_initialized")
@@ -155,13 +151,13 @@ class AudioPreprocessor:
         if self._config.remove_dc:
             processed = processed - np.mean(processed)
 
-        # 2. High-pass filter
-        if self._config.high_pass_hz > 0 and hasattr(self, "_hp_b"):
-            processed = signal.filtfilt(self._hp_b, self._hp_a, processed)
+        # 2. High-pass filter (causal single-pass SOS: no lookahead, ~2x faster)
+        if self._config.high_pass_hz > 0 and self._sos_hp is not None:
+            processed = signal.sosfilt(self._sos_hp, processed)
 
         # 3. Low-pass filter
-        if self._config.low_pass_hz > 0 and hasattr(self, "_lp_b"):
-            processed = signal.filtfilt(self._lp_b, self._lp_a, processed)
+        if self._config.low_pass_hz > 0 and self._sos_lp is not None:
+            processed = signal.sosfilt(self._sos_lp, processed)
 
         # 4. Noise gate
         if self._config.noise_gate_enabled:
@@ -174,27 +170,28 @@ class AudioPreprocessor:
         return processed.astype(np.float32)
 
     def _apply_noise_gate(self, audio: np.ndarray) -> np.ndarray:
-        """Apply noise gate to suppress low-level noise."""
+        """Apply noise gate to suppress low-level noise (vectorized)."""
         threshold_linear = 10 ** (self._config.noise_gate_threshold_db / 20)
-        
-        # Calculate envelope (simple RMS-based)
+
         frame_size = int(self._config.sample_rate * 0.01)  # 10ms frames
-        
+
         if len(audio) < frame_size:
             # Too short, check whole signal
-            rms = np.sqrt(np.mean(audio ** 2))
+            rms = np.sqrt(np.mean(audio**2))
             if rms < threshold_linear:
                 return np.zeros_like(audio)
             return audio
 
-        # Frame-based gating
+        # Vectorized frame RMS: truncate tail, reshape to (n_frames, frame_size)
+        n_frames = len(audio) // frame_size
+        trimmed_len = n_frames * frame_size
+        frames = audio[:trimmed_len].reshape(n_frames, frame_size)
+        rms = np.sqrt(np.mean(frames**2, axis=1))
+
+        # Soft gate mask: 0.1 (-20dB) for noisy frames, 1.0 otherwise
+        gains = np.where(rms < threshold_linear, 0.1, 1.0)
         result = audio.copy()
-        for i in range(0, len(audio) - frame_size, frame_size):
-            frame = audio[i:i + frame_size]
-            rms = np.sqrt(np.mean(frame ** 2))
-            if rms < threshold_linear:
-                # Soft gate (reduce by 20dB instead of hard mute)
-                result[i:i + frame_size] *= 0.1
+        result[:trimmed_len] *= np.repeat(gains, frame_size)
 
         return result
 
