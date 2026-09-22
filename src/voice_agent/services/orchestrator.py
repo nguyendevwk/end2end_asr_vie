@@ -476,7 +476,8 @@ class Orchestrator:
                     continue
 
                 tts_ms = (asyncio.get_event_loop().time() - tts_start) * 1000
-                sentence_audio_ms = get_audio_duration_ms(b"\x00" * audio_bytes_total)
+                # PCM S16LE: 2 bytes per sample at SAMPLE_RATE
+                sentence_audio_ms = (audio_bytes_total / (SAMPLE_RATE * 2)) * 1000
                 self._monitor.record_tts(tts_ms, len(sentence), sentence_audio_ms)
                 self._metrics.observe("tts_ms", tts_ms)
 
