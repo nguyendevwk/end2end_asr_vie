@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
 
 import numpy as np
 import torch
 
 from voice_agent.core import SAMPLE_RATE, VADConfig, VADError, VADResult
 from voice_agent.utils import Timer, get_logger, pcm_to_numpy
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
@@ -45,6 +42,8 @@ class VADService:
         self._model: torch.nn.Module | None = None
         self._iterator: _VADIterator | None = None
         self._started = False
+        # Guards torch model + iterator state across concurrent sessions.
+        self._lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Load Silero VAD model."""
@@ -110,8 +109,12 @@ class VADService:
                 # Convert to numpy
                 audio_np = pcm_to_numpy(audio)
 
-                # Run VAD iterator (handles chunking internally)
-                result = self._iterator(audio_np)
+            # Torch inference blocks the event loop (~5ms x N chunks);
+            # run it in a worker thread so WebSocket serving stays responsive.
+            # The lock serializes model access across concurrent sessions.
+            iterator = self._iterator
+            async with self._lock:
+                result = await asyncio.to_thread(iterator, audio_np)
 
             logger.debug(
                 "vad_detect",
@@ -136,6 +139,76 @@ class VADService:
     def is_started(self) -> bool:
         """Check if service is started."""
         return self._started
+
+    @property
+    def min_speech_ms(self) -> int:
+        """Minimum speech duration (ms) before a 'start' event fires."""
+        return self._config.min_speech_ms
+
+    @property
+    def threshold(self) -> float:
+        """Speech probability threshold."""
+        return self._config.threshold
+
+    def session(self) -> VADSession:
+        """
+        Create an isolated per-connection session sharing the loaded model.
+
+        Each WebSocket connection must use its own session; sharing one
+        iterator across connections corrupts speech/silence state.
+        """
+        if not self._started or self._model is None:
+            raise VADError("VAD service not started")
+        return VADSession(service=self)
+
+
+class VADSession:
+    """Per-connection VAD state (iterator + buffer) over a shared model."""
+
+    def __init__(self, service: VADService) -> None:
+        self._service = service
+        config = service._config
+        # _VADIterator is module-global by call time; no import needed.
+        self._iterator = _VADIterator(
+            model=service._model,
+            threshold=config.threshold,
+            min_speech_duration_ms=config.min_speech_ms,
+            min_silence_duration_ms=config.min_silence_ms,
+            speech_pad_ms=config.speech_pad_ms,
+        )
+
+    @property
+    def min_speech_ms(self) -> int:
+        return self._service.min_speech_ms
+
+    @property
+    def threshold(self) -> float:
+        return self._service.threshold
+
+    async def detect(self, audio: bytes) -> VADResult:
+        """Detect voice activity (model access serialized by service lock)."""
+        timer = Timer()
+        try:
+            with timer:
+                audio_np = pcm_to_numpy(audio)
+            iterator = self._iterator
+            async with self._service._lock:
+                result = await asyncio.to_thread(iterator, audio_np)
+            logger.debug(
+                "vad_detect",
+                latency_ms=round(timer.elapsed_ms, 2),
+                is_speech=result.is_speech,
+                vad_event=result.event,
+            )
+            return result
+        except Exception as e:
+            logger.error("vad_detect_failed", error=str(e))
+            raise VADError(f"VAD detection failed: {e}") from e
+
+    def reset(self) -> None:
+        """Reset session state for a new utterance."""
+        self._iterator.reset_states()
+        logger.debug("vad_reset")
 
 
 class _VADIterator:
