@@ -222,7 +222,7 @@ class AudioBuffer:
     Uses deque for O(1) append and popleft operations.
     """
 
-    __slots__ = ("_buffer", "_chunk_ms", "_dropped", "_max_bytes", "_sample_rate", "_total_bytes")
+    __slots__ = ("_buffer", "_dropped", "_sample_rate", "_total_bytes")
 
     def __init__(
         self,
@@ -243,12 +243,10 @@ class AudioBuffer:
         from collections import deque
 
         self._sample_rate = sample_rate
-        self._chunk_ms = chunk_ms
 
         # Calculate max chunks
         max_chunks = max_duration_ms // chunk_ms
         self._buffer: deque[bytes] = deque(maxlen=max_chunks)
-        self._max_bytes = (sample_rate * max_duration_ms // 1000) * 2  # S16LE
         self._total_bytes = 0
         self._dropped = 0  # chunks evicted by overflow (backpressure signal)
 

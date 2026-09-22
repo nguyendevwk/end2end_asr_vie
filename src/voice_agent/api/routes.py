@@ -90,7 +90,7 @@ async def info() -> dict[str, Any]:
 async def metrics() -> PlainTextResponse:
     """Prometheus text exposition."""
     registry = get_registry()
-    registry.gauge("sessions_stored").set(float(get_session_store().size))
+    registry.gauge("sessions_stored").set(get_session_store().size)
     return PlainTextResponse(registry.to_prometheus(), media_type="text/plain")
 
 

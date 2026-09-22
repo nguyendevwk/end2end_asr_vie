@@ -1,6 +1,6 @@
 """Core type definitions and data structures."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import AsyncIterator, Protocol
 

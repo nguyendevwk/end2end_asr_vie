@@ -16,9 +16,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Gwen-TTS native sample rate
-TTS_NATIVE_SAMPLE_RATE = 24000
-
 
 class TTSService:
     """
@@ -124,7 +121,6 @@ class TTSService:
             with timer:
                 # Generate speech (blocking model call -> worker thread)
                 model = self._model
-                gen_kwargs = dict(self._generation_config)
                 if self._config.voice_ref_audio and self._config.voice_ref_text:
                     # Use voice cloning
                     wavs, sr = await asyncio.to_thread(
@@ -133,7 +129,7 @@ class TTSService:
                         language="Vietnamese",
                         ref_audio=self._config.voice_ref_audio,
                         ref_text=self._config.voice_ref_text,
-                        **gen_kwargs,
+                        **self._generation_config,
                     )
                 else:
                     # Default voice (no cloning)
@@ -141,7 +137,7 @@ class TTSService:
                         model.generate,
                         text=text,
                         language="Vietnamese",
-                        **gen_kwargs,
+                        **self._generation_config,
                     )
 
                 # Get first result
@@ -208,7 +204,8 @@ class TTSService:
             chunk_duration_ms=chunk_duration_ms,
         )
 
-        start_time = asyncio.get_running_loop().time()
+        _loop = asyncio.get_running_loop()
+        start_time = _loop.time()
         first_chunk = True
 
         try:
@@ -217,7 +214,6 @@ class TTSService:
             # immediately with NO artificial sleep — the old
             # `sleep(chunk_ms * 0.8)` added ~0.8s latency per second of audio.
             model = self._model
-            gen_kwargs = dict(self._generation_config)
             if self._config.voice_ref_audio and self._config.voice_ref_text:
                 wavs, sr = await asyncio.to_thread(
                     model.generate_voice_clone,
@@ -225,14 +221,14 @@ class TTSService:
                     language="Vietnamese",
                     ref_audio=self._config.voice_ref_audio,
                     ref_text=self._config.voice_ref_text,
-                    **gen_kwargs,
+                    **self._generation_config,
                 )
             else:
                 wavs, sr = await asyncio.to_thread(
                     model.generate,
                     text=text,
                     language="Vietnamese",
-                    **gen_kwargs,
+                    **self._generation_config,
                 )
 
             audio_np = wavs[0] if isinstance(wavs, list) else wavs
@@ -244,15 +240,19 @@ class TTSService:
             # Calculate chunk size in samples
             chunk_samples = int(SAMPLE_RATE * chunk_duration_ms / 1000)
 
+            # Convert entire array to PCM once, then yield byte slices
+            # (avoids N individual numpy_to_pcm allocations)
+            full_pcm = numpy_to_pcm(audio_np)
+            chunk_bytes_len = chunk_samples * 2  # 2 bytes per sample (S16LE)
+
             # Yield audio in chunks as fast as possible (no pacing sleep).
             # Pacing is the web client's job (scheduled playback); sleeping
             # here only delays TTFA and risks WebSocket backpressure.
-            for i in range(0, len(audio_np), chunk_samples):
-                chunk = audio_np[i : i + chunk_samples]
-                chunk_bytes = numpy_to_pcm(chunk)
+            for offset in range(0, len(full_pcm), chunk_bytes_len):
+                chunk_bytes = full_pcm[offset : offset + chunk_bytes_len]
 
                 if first_chunk:
-                    ttfa_ms = (asyncio.get_running_loop().time() - start_time) * 1000
+                    ttfa_ms = (_loop.time() - start_time) * 1000
                     logger.info(
                         "tts_first_chunk",
                         ttfa_ms=round(ttfa_ms, 2),
@@ -262,7 +262,7 @@ class TTSService:
 
                 yield chunk_bytes
 
-            total_ms = (asyncio.get_running_loop().time() - start_time) * 1000
+            total_ms = (_loop.time() - start_time) * 1000
             logger.debug(
                 "tts_stream_complete",
                 total_ms=round(total_ms, 2),

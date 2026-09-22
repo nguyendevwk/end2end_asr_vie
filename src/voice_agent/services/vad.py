@@ -233,7 +233,6 @@ class _VADIterator:
         self._threshold = threshold
         self._min_speech_samples = SAMPLE_RATE * min_speech_duration_ms // 1000
         self._min_silence_samples = SAMPLE_RATE * min_silence_duration_ms // 1000
-        self._speech_pad_samples = SAMPLE_RATE * speech_pad_ms // 1000
 
         # State
         self._triggered = False
@@ -291,7 +290,7 @@ class _VADIterator:
                 remainder = combined[VAD_CHUNK_SAMPLES:]
                 self._chunks = [remainder] if len(remainder) > 0 else []
             total_len -= VAD_CHUNK_SAMPLES
-            self._buffer_len = sum(len(c) for c in self._chunks)
+            self._buffer_len = total_len
 
             # Convert to tensor
             audio_tensor = torch.from_numpy(chunk).float()

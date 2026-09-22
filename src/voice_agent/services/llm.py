@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import TYPE_CHECKING, AsyncIterator
 
@@ -247,20 +248,7 @@ class LLMService:
             query_chars = len(query)
             available = max_chars - system_chars - query_chars
 
-            # Add history from most recent, truncating oldest
-            added_chars = 0
-            for msg in reversed(history):
-                msg_chars = len(msg.get("content", ""))
-                if added_chars + msg_chars > available:
-                    break
-                added_chars += msg_chars
-            else:
-                # All history fits
-                messages.extend(history)
-                messages.append({"role": "user", "content": query})
-                return messages
-
-            # Partial history: take the most recent messages that fit
+            # Single-pass: collect most recent messages that fit (O(k))
             trimmed: list[dict[str, str]] = []
             added_chars = 0
             for msg in reversed(history):
@@ -268,7 +256,8 @@ class LLMService:
                 if added_chars + msg_chars > available:
                     break
                 added_chars += msg_chars
-                trimmed.insert(0, msg)
+                trimmed.append(msg)
+            trimmed.reverse()  # Restore original order
             messages.extend(trimmed)
 
         messages.append({"role": "user", "content": query})

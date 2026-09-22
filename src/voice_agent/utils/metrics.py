@@ -134,14 +134,13 @@ class MetricsRegistry:
             lines.append(f"# TYPE voice_{name} gauge")
             lines.append(f"voice_{name} {g.value}")
         for name, h in sorted(self._histograms.items()):
-            buckets, counts, total, _ = h.snapshot()
-            total_count = counts[-1] if counts else 0
+            buckets, counts, sum_ms, total_count = h.snapshot()
             base = name[:-3] if name.endswith("_ms") else name
             lines.append(f"# TYPE voice_{base}_ms histogram")
             for bound, count in zip(buckets, counts, strict=True):
                 lines.append(f'voice_{base}_ms_bucket{{le="{bound / 1000}"}} {count}')
             lines.append(f'voice_{base}_ms_bucket{{le="+Inf"}} {total_count}')
-            lines.append(f"voice_{base}_ms_sum {total / 1000}")
+            lines.append(f"voice_{base}_ms_sum {sum_ms / 1000}")
             lines.append(f"voice_{base}_ms_count {total_count}")
         lines.append("")
         return "\n".join(lines)

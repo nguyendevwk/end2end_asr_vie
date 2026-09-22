@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from voice_agent.core import (
+    SAMPLE_RATE,
     PipelineError,
     PipelineState,
 )
@@ -99,7 +100,6 @@ class Orchestrator:
         session_factory = getattr(vad, "session", None)
         self._vad = session_factory() if callable(session_factory) else vad
         self._asr = asr
-        self._llm = llm
         self._tts = tts
         self._runtime = runtime or PipelineRuntime()
         if text_task is not None:
@@ -120,9 +120,6 @@ class Orchestrator:
         # Conversation history
         self._history: list[dict[str, str]] = []
         self._last_transcript = ""
-
-        # Pipeline task (for cancellation)
-        self._pipeline_task: asyncio.Task[None] | None = None
 
         # Interrupt flag
         self._interrupted = False
@@ -269,6 +266,7 @@ class Orchestrator:
             Pipeline results (transcripts, audio responses)
         """
         audio_duration_ms = get_audio_duration_ms(audio)
+        loop = asyncio.get_running_loop()
 
         # === ASR ===
         if self._asr is None:
@@ -317,7 +315,7 @@ class Orchestrator:
                 audio_duration_ms=round(audio_duration_ms, 2),
             )
 
-            stream_start = asyncio.get_running_loop().time()
+            stream_start = loop.time()
             final_parts: list[str] = []
             try:
                 if rt.infer_semaphore is None:
@@ -350,7 +348,7 @@ class Orchestrator:
                     logger.error("asr_failed", session_id=self.session_id, error=str(e2))
             if not transcript:
                 logger.info("empty_streaming_transcript", session_id=self.session_id)
-            asr_latency_ms = (asyncio.get_running_loop().time() - stream_start) * 1000
+            asr_latency_ms = (loop.time() - stream_start) * 1000
 
         else:
             # Standard ASR - single pass with retry
@@ -391,7 +389,7 @@ class Orchestrator:
         yield "SPEAKING"
 
         first_audio = True
-        llm_start = asyncio.get_running_loop().time()
+        llm_start = loop.time()
         ttft_ms = 0.0
         ttfa_ms = 0.0
         total_tokens = 0
@@ -424,9 +422,9 @@ class Orchestrator:
                 yield sentence
 
         try:
-            _task_deadline = asyncio.get_running_loop().time() + rt.llm_timeout_s
+            _task_deadline = loop.time() + rt.llm_timeout_s
             async for sentence in _task_sentences():
-                if asyncio.get_running_loop().time() > _task_deadline:
+                if loop.time() > _task_deadline:
                     logger.warning("task_stream_timeout", session_id=self.session_id)
                     self._metrics.inc("errors_task_timeout")
                     yield "ERROR:Text task timed out"
@@ -441,7 +439,7 @@ class Orchestrator:
 
                 # Record LLM TTFT
                 if first_audio:
-                    ttft_ms = (asyncio.get_running_loop().time() - llm_start) * 1000
+                    ttft_ms = (loop.time() - llm_start) * 1000
 
                 # Always emit text so clients degrade to captions when TTS fails.
                 yield f"RESPONSE_TEXT:{sentence}"
@@ -459,7 +457,7 @@ class Orchestrator:
                     continue
 
                 # Stream TTS audio chunks with per-sentence timeout
-                tts_start = asyncio.get_running_loop().time()
+                tts_start = loop.time()
                 chunk_count = 0
                 audio_bytes_total = 0
                 chunk_ms = self._tts.stream_chunk_ms
@@ -485,7 +483,7 @@ class Orchestrator:
                         audio_bytes_total += len(audio_chunk)
 
                         if first_audio:
-                            ttfa_ms = (asyncio.get_running_loop().time() - tts_start) * 1000
+                            ttfa_ms = (loop.time() - tts_start) * 1000
                             self._monitor.record_first_audio()
                             first_audio = False
                             logger.info(
@@ -506,7 +504,7 @@ class Orchestrator:
                     yield f"ERROR:TTS failed for a sentence: {e}"
                     continue
 
-                tts_ms = (asyncio.get_running_loop().time() - tts_start) * 1000
+                tts_ms = (loop.time() - tts_start) * 1000
                 # PCM S16LE: 2 bytes per sample at SAMPLE_RATE
                 sentence_audio_ms = (audio_bytes_total / (SAMPLE_RATE * 2)) * 1000
                 self._monitor.record_tts(tts_ms, len(sentence), sentence_audio_ms)
@@ -524,7 +522,7 @@ class Orchestrator:
             yield f"ERROR:Text task failed: {e}"
 
         # Record task metrics
-        llm_total_ms = (asyncio.get_running_loop().time() - llm_start) * 1000
+        llm_total_ms = (loop.time() - llm_start) * 1000
         self._monitor.record_llm(ttft_ms, llm_total_ms, total_tokens)
         self._metrics.observe("task_ms", llm_total_ms)
         self._metrics.inc("turns_completed")
@@ -540,7 +538,7 @@ class Orchestrator:
             excess = len(self._history) - self._max_history
             # Round up to even to avoid breaking a pair
             trim = excess + (excess % 2)
-            self._history = self._history[trim:]
+            del self._history[:trim]
 
         self._finish_turn()
 
@@ -549,14 +547,10 @@ class Orchestrator:
         if self._state == PipelineState.SPEAKING:
             self._interrupted = True
             self._state = PipelineState.INTERRUPTED
-            if self._pipeline_task is not None and not self._pipeline_task.done():
-                self._pipeline_task.cancel()
             logger.info("interrupt_requested", session_id=self.session_id)
 
     def reset(self) -> None:
         """Reset orchestrator state."""
-        if self._pipeline_task is not None and not self._pipeline_task.done():
-            self._pipeline_task.cancel()
         self._audio_buffer.clear()
         self._vad.reset()
         self._state = PipelineState.IDLE

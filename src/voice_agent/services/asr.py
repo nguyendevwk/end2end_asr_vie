@@ -38,11 +38,8 @@ class ASRService:
     """
 
     # Streaming parameters (tuned for Vietnamese)
-    INTERIM_RESULTS_ENABLED = True      # Emit interim results
-    SINGLE_UTTERANCE_MODE = False       # Stop on silence
     OVERLAP_SAMPLES = 1600              # 100ms overlap at 16kHz
     MIN_STABILITY_THRESHOLD = 0.8       # Stability threshold for interim results
-    MAX_ALTERNATIVES = 1                # Number of alternatives
 
     def __init__(self, config: ASRConfig | None = None) -> None:
         """

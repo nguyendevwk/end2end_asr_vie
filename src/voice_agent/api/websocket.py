@@ -90,7 +90,6 @@ class WebSocketHandler:
             logger.info("websocket_connected")
 
             async def heartbeat_loop() -> None:
-                nonlocal last_activity
                 while True:
                     await asyncio.sleep(self._ping_interval_s)
                     if time.monotonic() - last_activity > self._ping_timeout_s:
@@ -162,7 +161,7 @@ class WebSocketHandler:
                         orchestrator = self._create_orchestrator(None)
                         session_id = orchestrator.session_id
                     await websocket.send_text(f"READY:{session_id}")
-                    if resumed and orchestrator is not None:
+                    if resumed:
                         last = orchestrator.snapshot()
                         if last.last_transcript:
                             await websocket.send_text(f"TRANSCRIPT:{last.last_transcript}")

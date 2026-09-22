@@ -82,6 +82,10 @@ class AdmissionGate:
     def limit(self) -> int:
         return self._max
 
+    def set_limit(self, new_max: int) -> None:
+        """Update the max concurrent connections (startup knob sync)."""
+        self._max = max(1, new_max)
+
     async def __aenter__(self) -> bool:
         return await self.acquire()
 

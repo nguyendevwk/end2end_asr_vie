@@ -74,17 +74,15 @@ tts_service: TTSService | None = None
 llm_service: LLMService | None = None
 
 # Production: shared admission gate, GPU inference semaphore, session store
-_connection_gate = AdmissionGate(max_concurrent=50)
-_infer_semaphore = asyncio.Semaphore(4)
+_connection_gate = AdmissionGate(max_concurrent=settings.max_ccu)
+_infer_semaphore = asyncio.Semaphore(settings.max_inflight_infer)
 _session_store: SessionStore = get_session_store()
+_session_store.configure(ttl_s=settings.session_ttl_s)
 
 
 def _sync_runtime_knobs() -> None:
     """Apply settings to shared production primitives (called on startup)."""
-    # Reset existing objects in-place instead of replacing them,
-    # so existing handler references stay valid.
-    _connection_gate._max = settings.max_ccu
-    _infer_semaphore._value = settings.max_inflight_infer
+    _connection_gate.set_limit(settings.max_ccu)
     _session_store.configure(ttl_s=settings.session_ttl_s)
 
 
@@ -447,7 +445,7 @@ def main() -> None:
     server = uvicorn.Server(config)
 
     # Handle graceful shutdown
-    def signal_handler(signum: int, frame: object) -> None:
+    def signal_handler(signum: int, _frame: object) -> None:
         logger.info("🛑 received_shutdown_signal", signal=signum)
         server.should_exit = True
 

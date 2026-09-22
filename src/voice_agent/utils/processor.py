@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 
 from voice_agent.core import SAMPLE_RATE, AudioError
 from voice_agent.utils import get_logger, pcm_to_numpy, numpy_to_pcm, Timer
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 

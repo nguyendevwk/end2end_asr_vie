@@ -4,12 +4,8 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from voice_agent.utils.logger import Timer, get_logger
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
@@ -66,13 +62,11 @@ class PipelineMonitor:
 
     # Current turn tracking
     _turn_start: float = field(default=0.0, repr=False)
-    _first_audio_time: float = field(default=0.0, repr=False)
 
     def start_turn(self) -> None:
         """Mark the start of a new turn."""
         self.turn_id += 1
         self._turn_start = time.perf_counter()
-        self._first_audio_time = 0.0
         logger.info(
             "turn_started",
             session_id=self.session_id,
@@ -88,7 +82,6 @@ class PipelineMonitor:
         user talk time and become useless for latency tuning.
         """
         self._turn_start = time.perf_counter()
-        self._first_audio_time = 0.0
 
     def record_vad(self, latency_ms: float, is_speech: bool) -> None:
         """Record VAD detection latency."""
@@ -163,8 +156,8 @@ class PipelineMonitor:
         if self._turn_start == 0.0:
             return 0.0
 
-        self._first_audio_time = time.perf_counter()
-        ttfa_ms = (self._first_audio_time - self._turn_start) * 1000
+        first_audio_time = time.perf_counter()
+        ttfa_ms = (first_audio_time - self._turn_start) * 1000
         self.ttfa_stats.record(ttfa_ms)
         logger.info(
             "ttfa",
