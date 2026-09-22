@@ -53,8 +53,8 @@ class VADConfig:
     """VAD configuration."""
 
     threshold: float = 0.5
-    min_speech_ms: int = 1000
-    min_silence_ms: int = 1000
+    min_speech_ms: int = 250
+    min_silence_ms: int = 700
     speech_pad_ms: int = 30
 
 
