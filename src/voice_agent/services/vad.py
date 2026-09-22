@@ -241,8 +241,9 @@ class _VADIterator:
         self._temp_end = 0
         self._current_sample = 0
 
-        # Audio buffer for chunking
-        self._buffer = np.array([], dtype=np.float32)
+        # Audio buffer for chunking (list of chunks for O(n) append)
+        self._chunks: list[np.ndarray] = []
+        self._buffer_len = 0
 
     def reset_states(self) -> None:
         """Reset internal state."""
@@ -251,7 +252,8 @@ class _VADIterator:
         self._speech_start = 0
         self._temp_end = 0
         self._current_sample = 0
-        self._buffer = np.array([], dtype=np.float32)
+        self._chunks = []
+        self._buffer_len = 0
 
     def __call__(self, audio_np: np.ndarray) -> VADResult:
         """
@@ -267,17 +269,29 @@ class _VADIterator:
         if len(audio_np) == 0:
             return VADResult(is_speech=self._triggered, confidence=0.0)
 
-        # Add to buffer
-        self._buffer = np.concatenate([self._buffer, audio_np])
+        # Add to buffer (list of chunks for O(n) append instead of O(n^2) concatenate)
+        self._chunks.append(audio_np)
+        total_len = self._buffer_len + len(audio_np)
 
         # Process all complete 512-sample chunks
         last_prob = 0.0
         event: str | None = None
 
-        while len(self._buffer) >= VAD_CHUNK_SAMPLES:
-            # Extract chunk
-            chunk = self._buffer[:VAD_CHUNK_SAMPLES]
-            self._buffer = self._buffer[VAD_CHUNK_SAMPLES:]
+        while total_len >= VAD_CHUNK_SAMPLES:
+            # Concatenate chunks to get enough samples
+            if len(self._chunks) == 1:
+                chunk = self._chunks[0][:VAD_CHUNK_SAMPLES]
+                self._chunks[0] = self._chunks[0][VAD_CHUNK_SAMPLES:]
+                if len(self._chunks[0]) == 0:
+                    self._chunks.pop(0)
+            else:
+                combined = np.concatenate(self._chunks)
+                chunk = combined[:VAD_CHUNK_SAMPLES]
+                # Replace chunks with remainder
+                remainder = combined[VAD_CHUNK_SAMPLES:]
+                self._chunks = [remainder] if len(remainder) > 0 else []
+            total_len -= VAD_CHUNK_SAMPLES
+            self._buffer_len = sum(len(c) for c in self._chunks)
 
             # Convert to tensor
             audio_tensor = torch.from_numpy(chunk).float()
