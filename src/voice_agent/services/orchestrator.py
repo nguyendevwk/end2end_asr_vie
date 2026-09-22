@@ -359,6 +359,7 @@ class Orchestrator:
 
         if not transcript:
             logger.info("empty_transcript", session_id=self.session_id)
+            self._finish_turn()
             return
 
         yield f"TRANSCRIPT:{transcript}"
@@ -391,6 +392,9 @@ class Orchestrator:
                 )
             except StopAsyncIteration:
                 first = None
+        except asyncio.CancelledError:
+            logger.info("pipeline_cancelled", session_id=self.session_id)
+            return
         except Exception as e:
             logger.error("task_failed", session_id=self.session_id, error=str(e))
             self._metrics.inc("errors_task")
@@ -503,8 +507,13 @@ class Orchestrator:
         full_response = " ".join(response_parts).strip()
         if full_response:
             self._history.append({"role": "assistant", "content": full_response})
+        # Trim to max_history while preserving user/assistant pair coherence
         if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history :]
+            # Ensure we always keep an even number of messages (pairs)
+            excess = len(self._history) - self._max_history
+            # Round up to even to avoid breaking a pair
+            trim = excess + (excess % 2)
+            self._history = self._history[trim:]
 
         self._finish_turn()
 
@@ -513,10 +522,14 @@ class Orchestrator:
         if self._state == PipelineState.SPEAKING:
             self._interrupted = True
             self._state = PipelineState.INTERRUPTED
+            if self._pipeline_task is not None and not self._pipeline_task.done():
+                self._pipeline_task.cancel()
             logger.info("interrupt_requested", session_id=self.session_id)
 
     def reset(self) -> None:
         """Reset orchestrator state."""
+        if self._pipeline_task is not None and not self._pipeline_task.done():
+            self._pipeline_task.cancel()
         self._audio_buffer.clear()
         self._vad.reset()
         self._state = PipelineState.IDLE
