@@ -158,8 +158,12 @@ class LLMService:
         total_tokens = 0
         buffer = ""
 
-        # Sentence-ending punctuation
+        # Sentence-ending punctuation (Vietnamese + CJK)
         sentence_endings = (".", "!", "?", "。", "！", "？")
+        # Fallback split points for long buffers without terminal punctuation:
+        # commas/semicolons/colons/newlines keep TTS fed and cut TTFA.
+        clause_breaks = (",", ";", ":", "、", "\n")
+        max_buffer_chars = 120
 
         try:
             messages = self._build_messages(query, history)
@@ -185,10 +189,24 @@ class LLMService:
 
                     buffer += token
 
-                    # Yield complete sentences
-                    if buffer.rstrip().endswith(sentence_endings):
-                        yield buffer.strip()
+                    # Yield complete sentences immediately (lowest TTFA)
+                    stripped = buffer.strip()
+                    if stripped and stripped[-1] in sentence_endings:
+                        yield stripped
                         buffer = ""
+                    elif len(buffer) >= max_buffer_chars:
+                        # Long sentence without terminal punctuation:
+                        # split at last clause boundary so TTS doesn't starve.
+                        cut = -1
+                        for br in clause_breaks:
+                            idx = buffer.rfind(br)
+                            if idx > cut:
+                                cut = idx
+                        if cut > 0:
+                            chunk_text = buffer[: cut + 1].strip()
+                            if chunk_text:
+                                yield chunk_text
+                            buffer = buffer[cut + 1 :]
 
             # Yield remaining buffer
             if buffer.strip():
