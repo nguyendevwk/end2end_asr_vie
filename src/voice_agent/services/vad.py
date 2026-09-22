@@ -112,8 +112,10 @@ class VADService:
             # Torch inference blocks the event loop (~5ms x N chunks);
             # run it in a worker thread so WebSocket serving stays responsive.
             # The lock serializes model access across concurrent sessions.
-            iterator = self._iterator
             async with self._lock:
+                iterator = self._iterator
+                if iterator is None:
+                    raise VADError("VAD service stopped during inference")
                 result = await asyncio.to_thread(iterator, audio_np)
 
             logger.debug(
@@ -191,9 +193,8 @@ class VADSession:
         try:
             with timer:
                 audio_np = pcm_to_numpy(audio)
-            iterator = self._iterator
             async with self._service._lock:
-                result = await asyncio.to_thread(iterator, audio_np)
+                result = await asyncio.to_thread(self._iterator, audio_np)
             logger.debug(
                 "vad_detect",
                 latency_ms=round(timer.elapsed_ms, 2),
@@ -207,7 +208,8 @@ class VADSession:
 
     def reset(self) -> None:
         """Reset session state for a new utterance."""
-        self._iterator.reset_states()
+        if self._iterator is not None:
+            self._iterator.reset_states()
         logger.debug("vad_reset")
 
 
