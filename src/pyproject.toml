@@ -184,6 +184,7 @@ addopts = [
     "-v",
     "--tb=short",
     "-ra",
+    "-m", "not slow and not gpu",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
