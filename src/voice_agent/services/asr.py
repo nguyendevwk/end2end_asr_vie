@@ -465,6 +465,7 @@ class ASRService:
         total_processed_ms = 0.0
         chunks_processed = 0
         last_speech_time = 0.0
+        transcribed_up_to = 0  # byte offset of already-transcribed audio
 
         logger.info(
             "asr_realtime_start",
@@ -494,8 +495,11 @@ class ASRService:
                 if not should_process:
                     continue
 
-                # Process current buffer
-                chunk_to_process = bytes(buffer)
+                # Process current buffer — only transcribe new audio plus
+                # overlap for context, avoiding O(n²) full-buffer re-transcription.
+                overlap_bytes = min(transcribed_up_to, self.OVERLAP_SAMPLES * 2)
+                slice_start = max(0, transcribed_up_to - overlap_bytes)
+                chunk_to_process = bytes(buffer[slice_start:])
                 chunk_duration_ms = len(chunk_to_process) / (SAMPLE_RATE * 2) * 1000
 
                 timer = Timer()
@@ -546,10 +550,12 @@ class ASRService:
                         if is_final:
                             buffer.clear()
                             prev_text = ""
+                            transcribed_up_to = 0
                         else:
                             # Keep overlap for context
                             overlap_bytes = min(len(buffer), self.OVERLAP_SAMPLES * 2)
                             buffer = bytearray(buffer[-overlap_bytes:])
+                            transcribed_up_to = len(buffer)
 
                     elif force_final and prev_text:
                         # No new text but forced - emit final for previous
