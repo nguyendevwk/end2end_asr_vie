@@ -17,11 +17,14 @@ from voice_agent.utils.logger import (
     setup_logging,
     track_latency,
 )
+from voice_agent.utils.metrics import MetricsRegistry, get_registry
 from voice_agent.utils.monitor import (
     LatencyStats,
     MetricsContext,
     PipelineMonitor,
 )
+from voice_agent.utils.resilience import AdmissionGate, retry_async
+from voice_agent.utils.session_store import SessionSnapshot, SessionStore, get_session_store
 from voice_agent.utils.processor import (
     AudioPostprocessor,
     AudioPreprocessor,
@@ -51,6 +54,16 @@ __all__ = [
     "LatencyStats",
     "PipelineMonitor",
     "MetricsContext",
+    # Metrics
+    "MetricsRegistry",
+    "get_registry",
+    # Resilience
+    "AdmissionGate",
+    "retry_async",
+    # Sessions
+    "SessionSnapshot",
+    "SessionStore",
+    "get_session_store",
     # Processor
     "AudioPreprocessor",
     "AudioPostprocessor",

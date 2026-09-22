@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,7 +29,8 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Absolute path: works whether CWD is repo root or src/
+        env_file=str(Path(__file__).resolve().parent.parent / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -83,6 +85,34 @@ class Settings(BaseSettings):
         ),
         description="System prompt",
     )
+
+    # === Text task (ASR -> TTS core, LLM as pluggable middleware) ===
+    text_task: str = Field(
+        default="llm",
+        description="Text task: 'llm', 'passthrough', 'router', or custom registered name",
+    )
+    text_task_prefix: str = Field(
+        default="Bạn nói: ",
+        description="Prefix for the passthrough task",
+    )
+
+    # === Production: concurrency & backpressure ===
+    max_ccu: int = Field(default=50, description="Max concurrent WebSocket connections")
+    max_inflight_infer: int = Field(
+        default=4, description="Max concurrent GPU inferences (ASR/TTS admission)"
+    )
+
+    # === Production: timeouts & retries ===
+    asr_timeout_s: float = Field(default=15.0, description="Per-attempt ASR timeout")
+    tts_timeout_s: float = Field(default=20.0, description="Per-sentence TTS timeout")
+    llm_timeout_s: float = Field(default=30.0, description="LLM task total timeout")
+    llm_first_token_timeout_s: float = Field(default=10.0, description="LLM first chunk timeout")
+    max_retries: int = Field(default=1, description="Extra attempts after the first try")
+
+    # === Production: heartbeat & sessions ===
+    ws_ping_interval_s: float = Field(default=20.0, description="Server heartbeat interval")
+    ws_ping_timeout_s: float = Field(default=60.0, description="Close after silence")
+    session_ttl_s: float = Field(default=300.0, description="Reconnect resume window")
 
 
 @lru_cache
