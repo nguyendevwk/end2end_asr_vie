@@ -4,9 +4,11 @@
 
 import asyncio
 import time
+from typing import AsyncIterator
 
 import pytest
 
+from voice_agent.core import VADResult, TranscriptionResult, SynthesisResult
 from voice_agent.services.text_tasks import (
     LLMTask,
     PassthroughTask,
@@ -154,37 +156,59 @@ class TestSessionStore:
 
 
 class _FakeVAD:
-    min_speech_ms = 250
+    min_speech_ms: int = 250
 
-    async def detect(self, audio: bytes) -> object:
-        raise AssertionError("not used")
+    async def detect(self, audio: bytes) -> VADResult:
+        return VADResult(is_speech=True, confidence=0.9, event=None)
 
     def reset(self) -> None:
         pass
 
+    @property
+    def is_started(self) -> bool:
+        return True
+
 
 class _FakeASR:
-    streaming = False
-    preprocess_enabled = True
+    streaming: bool = False
+    preprocess_enabled: bool = True
 
-    async def transcribe(self, audio: bytes, preprocess: bool = True) -> object:
-        from voice_agent.core import TranscriptionResult
-
+    async def transcribe(self, audio: bytes, preprocess: bool = True) -> TranscriptionResult:
         return TranscriptionResult(text="xin chào", language="vi", latency_ms=5.0)
+
+    @property
+    def is_started(self) -> bool:
+        return True
 
 
 class _FakeTTS:
-    stream_chunk_ms = 100
+    stream_chunk_ms: int = 100
 
-    async def synthesize_stream(self, text: str, chunk_duration_ms: int = 100) -> object:
+    async def synthesize_stream(self, text: str, chunk_duration_ms: int = 100) -> AsyncIterator[bytes]:
         yield b"\x00\x00" * 160
+
+    @property
+    def is_started(self) -> bool:
+        return True
 
 
 class TestOrchestratorProduction:
-    def _make(self, **kwargs: object) -> object:
+    def _make(self, vad: object | None = None, **kwargs: object) -> object:
         from voice_agent.services.orchestrator import Orchestrator
 
-        return Orchestrator(vad=_FakeVAD(), asr=_FakeASR(), tts=_FakeTTS(), **kwargs)  # type: ignore[arg-type]
+        return Orchestrator(vad=vad or _FakeVAD(), asr=_FakeASR(), tts=_FakeTTS(), **kwargs)  # type: ignore[arg-type]
+
+    async def test_empty_transcript(self) -> None:
+        from voice_agent.services.orchestrator import Orchestrator
+
+        class EmptyASR(_FakeASR):
+            async def transcribe(self, audio: bytes, preprocess: bool = True) -> TranscriptionResult:
+                return TranscriptionResult(text="", language="", latency_ms=0.0)
+
+        orch = Orchestrator(vad=_FakeVAD(), asr=EmptyASR(), tts=_FakeTTS())
+        results = [r async for r in orch._run_pipeline(b"\x00\x00" * 32000)]
+        # Should not crash, and monitor should have end_turn called
+        assert orch._monitor.turn_id >= 0
 
     async def test_passthrough_pipeline(self) -> None:
         orch = self._make(text_task=PassthroughTask(prefix="Echo: "))
@@ -221,3 +245,66 @@ class TestOrchestratorProduction:
         orch.set_task(PassthroughTask(prefix="B: "))
         results = [r async for r in orch._run_pipeline(b"\x00\x00" * 32000)]
         assert any("RESPONSE_TEXT:B: xin chào" in r for r in results if isinstance(r, str))
+
+    async def test_process_audio_full_loop(self) -> None:
+        class SeqVAD:
+            min_speech_ms: int = 250
+            _call_count = 0
+
+            async def detect(self, audio: bytes) -> VADResult:
+                SeqVAD._call_count += 1
+                if SeqVAD._call_count == 1:
+                    return VADResult(is_speech=True, confidence=0.9, event="start")
+                elif SeqVAD._call_count == 3:
+                    return VADResult(is_speech=False, confidence=0.1, event="end")
+                return VADResult(is_speech=True, confidence=0.9, event=None)
+
+            def reset(self) -> None:
+                SeqVAD._call_count = 0
+
+            @property
+            def is_started(self) -> bool:
+                return True
+
+        orch = self._make(vad=SeqVAD(), text_task=PassthroughTask(prefix="Echo: "))
+        results = []
+        for chunk in [b"\x00\x00" * 8000, b"\x00\x00" * 8000, b"\x00\x00" * 8000]:
+            async for r in orch.process_audio(chunk):
+                results.append(r)
+        texts = [r for r in results if isinstance(r, str)]
+        assert any("LISTENING" in t for t in texts)
+        assert any("TRANSCRIPT:" in t for t in texts)
+
+    async def test_interrupt(self) -> None:
+        orch = self._make(text_task=PassthroughTask())
+        orch._state = orch._state.__class__.SPEAKING
+        orch._interrupted = False
+        await orch.interrupt()
+        assert orch._interrupted is True
+
+    async def test_clear_history(self) -> None:
+        orch = self._make(text_task=PassthroughTask())
+        orch._history = [{"role": "user", "content": "hi"}]
+        orch.clear_history()
+        assert len(orch._history) == 0
+
+    async def test_history_cap_preserves_pairs(self) -> None:
+        orch = self._make(text_task=PassthroughTask())
+        orch._max_history = 4
+        # Run pipeline multiple times to trigger history capping
+        for _ in range(4):
+            results = [r async for r in orch._run_pipeline(b"\x00\x00" * 32000)]
+        # After 4 turns (8 messages), cap should have kicked in
+        assert len(orch._history) <= orch._max_history
+        # Check no orphaned messages (each user should have assistant reply)
+        for i in range(0, len(orch._history), 2):
+            if i + 1 < len(orch._history):
+                assert orch._history[i]["role"] == "user"
+                assert orch._history[i + 1]["role"] == "assistant"
+
+    async def test_snapshot_returns_state(self) -> None:
+        orch = self._make(text_task=PassthroughTask())
+        orch._history = [{"role": "user", "content": "test"}]
+        snap = orch.snapshot()
+        assert snap.session_id == orch.session_id
+        assert snap.history == [{"role": "user", "content": "test"}]

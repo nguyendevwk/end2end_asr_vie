@@ -101,13 +101,13 @@ class Orchestrator:
         self._asr = asr
         self._llm = llm
         self._tts = tts
+        self._runtime = runtime or PipelineRuntime()
         if text_task is not None:
             self._task = text_task
         elif llm is not None:
             self._task = LLMTask(llm=llm)
         else:
             self._task = PassthroughTask(prefix=self._runtime.passthrough_prefix)
-        self._runtime = runtime or PipelineRuntime()
 
         self.session_id = session_id or str(uuid.uuid4())[:8]
         self._state = PipelineState.IDLE
