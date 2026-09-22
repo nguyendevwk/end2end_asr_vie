@@ -1,18 +1,36 @@
-"""Constants and configuration values."""
+"""Constants and configuration values.
+
+Defaults are defined in core/types.py dataclasses; these constants re-export
+them for backward compatibility and use in non-dataclass contexts.
+"""
+
+from voice_agent.core.types import (
+    AudioFormat,
+    LLMConfig,
+    ASRConfig,
+    TTSConfig,
+    VADConfig,
+)
 
 # ============== AUDIO ==============
 
-SAMPLE_RATE = 16000
-CHANNELS = 1
-CHUNK_DURATION_MS = 100
+_SAMPLE_RATE = 16000
+_CHANNELS = 1
+_CHUNK_DURATION_MS = 100
+
+# Re-export for backward compatibility
+SAMPLE_RATE = _SAMPLE_RATE
+CHANNELS = _CHANNELS
+CHUNK_DURATION_MS = _CHUNK_DURATION_MS
 BYTES_PER_SAMPLE = 2  # PCM S16LE
 
 # ============== VAD ==============
 
-VAD_THRESHOLD = 0.5
-VAD_MIN_SPEECH_MS = 250
-VAD_MIN_SILENCE_MS = 700
-VAD_SPEECH_PAD_MS = 30
+_vad_defaults = VADConfig()
+VAD_THRESHOLD = _vad_defaults.threshold
+VAD_MIN_SPEECH_MS = _vad_defaults.min_speech_ms
+VAD_MIN_SILENCE_MS = _vad_defaults.min_silence_ms
+VAD_SPEECH_PAD_MS = _vad_defaults.speech_pad_ms
 
 # ============== LATENCY TARGETS ==============
 
@@ -29,13 +47,13 @@ MAX_AUDIO_BUFFER_CHUNKS = MAX_AUDIO_BUFFER_MS // CHUNK_DURATION_MS
 
 # ============== MODEL NAMES ==============
 
-DEFAULT_ASR_MODEL = "Qwen/Qwen3-ASR-0.6B"
-DEFAULT_TTS_MODEL = "g-group-ai-lab/gwen-tts-0.6B"
-DEFAULT_LLM_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_ASR_MODEL = ASRConfig().model_name
+DEFAULT_TTS_MODEL = TTSConfig().model_name
+DEFAULT_LLM_MODEL = LLMConfig().model
 
 # ============== API ==============
 
-GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_BASE_URL = LLMConfig().base_url
 WEBSOCKET_PATH = "/ws/agent"
 HEALTH_PATH = "/health"
 
