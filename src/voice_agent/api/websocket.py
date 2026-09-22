@@ -131,7 +131,13 @@ class WebSocketHandler:
                     except Exception as e:
                         logger.error("process_audio_error", error=str(e))
                         self._metrics.inc("errors_process_audio")
-                        await websocket.send_text(f"ERROR:{e}")
+                        with contextlib.suppress(Exception):
+                            await websocket.send_text(f"ERROR:{e}")
+                        # Recover orchestrator state after error
+                        with contextlib.suppress(Exception):
+                            await orchestrator.interrupt()
+                        with contextlib.suppress(Exception):
+                            orchestrator.reset()
                     continue
 
                 text = message.get("text")
@@ -194,6 +200,8 @@ class WebSocketHandler:
         finally:
             if heartbeat is not None:
                 heartbeat.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat
             if orchestrator is not None and self._sessions is not None and session_id:
                 try:
                     self._sessions.save(orchestrator.snapshot())
