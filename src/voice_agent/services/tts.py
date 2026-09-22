@@ -206,7 +206,7 @@ class TTSService:
             chunk_duration_ms=chunk_duration_ms,
         )
 
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         first_chunk = True
 
         try:
@@ -250,7 +250,7 @@ class TTSService:
                 chunk_bytes = numpy_to_pcm(chunk)
 
                 if first_chunk:
-                    ttfa_ms = (asyncio.get_event_loop().time() - start_time) * 1000
+                    ttfa_ms = (asyncio.get_running_loop().time() - start_time) * 1000
                     logger.info(
                         "tts_first_chunk",
                         ttfa_ms=round(ttfa_ms, 2),
@@ -260,7 +260,7 @@ class TTSService:
 
                 yield chunk_bytes
 
-            total_ms = (asyncio.get_event_loop().time() - start_time) * 1000
+            total_ms = (asyncio.get_running_loop().time() - start_time) * 1000
             logger.debug(
                 "tts_stream_complete",
                 total_ms=round(total_ms, 2),
